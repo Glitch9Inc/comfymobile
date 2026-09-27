@@ -622,7 +622,7 @@
     <!-- Metadata actions -->
     <string name="metadata_save_prompt">Zapisz prompt do biblioteki</string>
     <string name="label_save_to_phone">Zapisuj wyniki w Zdjęciach</string>
-    <string name="desc_save_to_phone">Automatycznie zapisuj wygenerowane obrazy i filmy w Pictures/ComfyChair i Movies/ComfyChair</string>
+    <string name="desc_save_to_phone">Automatycznie zapisuj wygenerowane obrazy i filmy w Pictures/ComfyMobile i Movies/ComfyMobile</string>
     <string name="gallery_view_grid_2">2 kolumny</string>
     <string name="gallery_view_grid_3">3 kolumny</string>
     <string name="gallery_view_grid_4">4 kolumny</string>

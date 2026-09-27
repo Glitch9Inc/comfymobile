@@ -622,7 +622,7 @@
     <!-- Metadata actions -->
     <string name="metadata_save_prompt">保存提示词到库</string>
     <string name="label_save_to_phone">保存到相册</string>
-    <string name="desc_save_to_phone">自动将生成的图片和视频保存到 Pictures/ComfyChair 和 Movies/ComfyChair</string>
+    <string name="desc_save_to_phone">自动将生成的图片和视频保存到 Pictures/ComfyMobile 和 Movies/ComfyMobile</string>
     <string name="gallery_view_grid_2">2 列</string>
     <string name="gallery_view_grid_3">3 列</string>
     <string name="gallery_view_grid_4">4 列</string>

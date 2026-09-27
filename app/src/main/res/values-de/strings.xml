@@ -620,7 +620,7 @@
     <!-- Metadata actions -->
     <string name="metadata_save_prompt">Prompt in Bibliothek speichern</string>
     <string name="label_save_to_phone">Ausgaben in Fotos speichern</string>
-    <string name="desc_save_to_phone">Generierte Bilder und Videos automatisch in Pictures/ComfyChair und Movies/ComfyChair speichern</string>
+    <string name="desc_save_to_phone">Generierte Bilder und Videos automatisch in Pictures/ComfyMobile und Movies/ComfyMobile speichern</string>
     <string name="gallery_view_grid_2">2 Spalten</string>
     <string name="gallery_view_grid_3">3 Spalten</string>
     <string name="gallery_view_grid_4">4 Spalten</string>

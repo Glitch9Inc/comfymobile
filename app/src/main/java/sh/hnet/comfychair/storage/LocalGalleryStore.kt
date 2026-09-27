@@ -201,7 +201,7 @@ object LocalGalleryStore {
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
             put(
                 MediaStore.MediaColumns.RELATIVE_PATH,
-                (if (isVideoMime) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES) + "/ComfyChair"
+                (if (isVideoMime) Environment.DIRECTORY_MOVIES else Environment.DIRECTORY_PICTURES) + "/ComfyMobile"
             )
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }

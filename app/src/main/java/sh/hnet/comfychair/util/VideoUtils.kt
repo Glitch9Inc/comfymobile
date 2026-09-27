@@ -124,12 +124,12 @@ object VideoUtils {
      *
      * @param context Application context
      * @param videoUri The source video URI to save
-     * @param filenamePrefix Prefix for the saved file (e.g., "ComfyChair" or "ComfyChair_ITV")
+     * @param filenamePrefix Prefix for the saved file (e.g., "ComfyMobile" or "ComfyMobile_ITV")
      */
     suspend fun saveVideoToGallery(
         context: Context,
         videoUri: Uri?,
-        filenamePrefix: String = "ComfyChair"
+        filenamePrefix: String = "ComfyMobile"
     ) {
         if (videoUri == null) return
 
@@ -138,7 +138,7 @@ object VideoUtils {
                 val contentValues = ContentValues().apply {
                     put(MediaStore.Video.Media.DISPLAY_NAME, "${filenamePrefix}_${System.currentTimeMillis()}.mp4")
                     put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/ComfyChair")
+                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/ComfyMobile")
                 }
 
                 val resolver = context.contentResolver
@@ -215,7 +215,7 @@ object VideoUtils {
      * Constants for gallery filename prefixes.
      */
     object GalleryPrefix {
-        const val TEXT_TO_VIDEO = "ComfyChair"
-        const val IMAGE_TO_VIDEO = "ComfyChair_ITV"
+        const val TEXT_TO_VIDEO = "ComfyMobile"
+        const val IMAGE_TO_VIDEO = "ComfyMobile_ITV"
     }
 }

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">ComfyChair</string>
+    <string name="app_name" translatable="false">ComfyMobile</string>
 
     <!-- Login screen strings -->
     <string name="hint_hostname">Hostname</string>
@@ -651,7 +651,7 @@
     <!-- Metadata actions -->
     <string name="metadata_save_prompt">Save prompt to library</string>
     <string name="label_save_to_phone">Save outputs to Photos</string>
-    <string name="desc_save_to_phone">Automatically save generated images and videos to Pictures/ComfyChair and Movies/ComfyChair</string>
+    <string name="desc_save_to_phone">Automatically save generated images and videos to Pictures/ComfyMobile and Movies/ComfyMobile</string>
     <string name="gallery_view_grid_2">2 columns</string>
     <string name="gallery_view_grid_3">3 columns</string>
     <string name="gallery_view_grid_4">4 columns</string>
