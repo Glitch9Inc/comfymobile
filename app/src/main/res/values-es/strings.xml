@@ -640,4 +640,8 @@
     <string name="msg_added_to_album">Añadido al álbum</string>
     <string name="msg_removed_from_album">Quitado del álbum</string>
     <string name="msg_album_empty">Este álbum está vacío</string>
+    <string name="button_import_from_comfyui">Importar desde ComfyUI</string>
+    <string name="title_comfyui_workflows">Flujos de ComfyUI</string>
+    <string name="error_comfyui_workflows">No se pudieron cargar los flujos del servidor ComfyUI. Comprueba la conexión.</string>
+    <string name="msg_comfyui_workflows_empty">Aún no hay flujos guardados en ComfyUI. Guarda uno en ComfyUI en tu PC (Workflow → Guardar).</string>
 </resources>

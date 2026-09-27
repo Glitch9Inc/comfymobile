@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -197,6 +199,10 @@ fun WorkflowsSettingsScreen(
                 }) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.button_new_workflow))
                 }
+                // Import from ComfyUI's saved workflows (on the server PC)
+                IconButton(onClick = { viewModel.openServerWorkflows() }) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = stringResource(R.string.button_import_from_comfyui))
+                }
                 // Import button
                 IconButton(onClick = { jsonPickerLauncher.launch("application/json") }) {
                     Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.button_import))
@@ -305,6 +311,16 @@ fun WorkflowsSettingsScreen(
     }
 
     // Import dialog
+    if (uiState.showServerWorkflowsDialog) {
+        ServerWorkflowsDialog(
+            isLoading = uiState.isLoadingServerWorkflows,
+            isError = uiState.serverWorkflowsError,
+            paths = uiState.serverWorkflows,
+            onSelect = viewModel::importServerWorkflow,
+            onDismiss = viewModel::dismissServerWorkflows
+        )
+    }
+
     if (uiState.showImportDialog) {
         ImportWorkflowDialog(
             selectedType = uiState.importSelectedType,
@@ -953,6 +969,60 @@ private fun DuplicateWorkflowDialog(
             OutlinedButton(onClick = onDismiss) {
                 Text(stringResource(R.string.button_cancel))
             }
+        }
+    )
+}
+
+/**
+ * Lists workflows saved in ComfyUI on the server PC; tapping one imports it.
+ */
+@Composable
+private fun ServerWorkflowsDialog(
+    isLoading: Boolean,
+    isError: Boolean,
+    paths: List<String>,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.title_comfyui_workflows)) },
+        text = {
+            when {
+                isLoading -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator() }
+                isError -> Text(stringResource(R.string.error_comfyui_workflows))
+                paths.isEmpty() -> Text(stringResource(R.string.msg_comfyui_workflows_empty))
+                else -> LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                    items(paths) { path ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(path) }
+                                .padding(vertical = 12.dp)
+                        ) {
+                            Text(
+                                text = path.substringAfterLast('/').removeSuffix(".json"),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            if (path.contains('/')) {
+                                Text(
+                                    text = path.substringBeforeLast('/'),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.button_cancel)) }
         }
     )
 }

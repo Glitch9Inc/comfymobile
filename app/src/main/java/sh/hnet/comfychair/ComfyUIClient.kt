@@ -915,6 +915,80 @@ class ComfyUIClient(
     }
 
     /**
+     * List workflows saved in ComfyUI's own workflow library
+     * (user data folder "workflows", what the ComfyUI web UI shows in its Workflows panel).
+     *
+     * @param callback Paths relative to the workflows folder (e.g. "portrait.json", "sub/x.json"),
+     *                 or null on error
+     */
+    fun fetchSavedWorkflowList(callback: (paths: List<String>?) -> Unit) {
+        val baseUrl = getBaseUrl() ?: run {
+            callback(null)
+            return
+        }
+        val request = Request.Builder()
+            .url("$baseUrl/api/userdata?dir=workflows&recurse=true&split=false&full_info=false")
+            .get()
+            .build()
+
+        httpClient.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) {
+                callback(null)
+            }
+
+            override fun onResponse(call: okhttp3.Call, response: Response) {
+                response.use {
+                    when {
+                        // No workflows folder yet
+                        response.code == 404 -> callback(emptyList())
+                        !response.isSuccessful -> callback(null)
+                        else -> try {
+                            val arr = org.json.JSONArray(response.body?.string() ?: "[]")
+                            val paths = (0 until arr.length())
+                                .mapNotNull { arr.optString(it).takeIf { p -> p.endsWith(".json", ignoreCase = true) } }
+                                .sortedBy { it.lowercase() }
+                            callback(paths)
+                        } catch (e: Exception) {
+                            callback(null)
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    /**
+     * Download one workflow from ComfyUI's workflow library.
+     *
+     * @param path Path relative to the workflows folder, as returned by [fetchSavedWorkflowList]
+     * @param callback The workflow JSON text, or null on error
+     */
+    fun fetchSavedWorkflow(path: String, callback: (json: String?) -> Unit) {
+        val baseUrl = getBaseUrl() ?: run {
+            callback(null)
+            return
+        }
+        // The whole "workflows/<path>" must be one URL-encoded segment (slashes as %2F)
+        val encoded = java.net.URLEncoder.encode("workflows/$path", "UTF-8").replace("+", "%20")
+        val request = Request.Builder()
+            .url("$baseUrl/api/userdata/$encoded")
+            .get()
+            .build()
+
+        httpClient.newCall(request).enqueue(object : okhttp3.Callback {
+            override fun onFailure(call: okhttp3.Call, e: IOException) {
+                callback(null)
+            }
+
+            override fun onResponse(call: okhttp3.Call, response: Response) {
+                response.use {
+                    callback(if (response.isSuccessful) response.body?.string() else null)
+                }
+            }
+        })
+    }
+
+    /**
      * Fetch execution history for a prompt ID
      * Used to get information about generated images
      *

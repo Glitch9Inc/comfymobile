@@ -640,4 +640,8 @@
     <string name="msg_added_to_album">已添加到相册</string>
     <string name="msg_removed_from_album">已从相册移除</string>
     <string name="msg_album_empty">此相册为空</string>
+    <string name="button_import_from_comfyui">从 ComfyUI 导入</string>
+    <string name="title_comfyui_workflows">ComfyUI 工作流</string>
+    <string name="error_comfyui_workflows">无法从 ComfyUI 服务器加载工作流。请检查连接。</string>
+    <string name="msg_comfyui_workflows_empty">ComfyUI 中还没有保存的工作流。请在电脑上的 ComfyUI 中保存一个（Workflow → Save）。</string>
 </resources>
