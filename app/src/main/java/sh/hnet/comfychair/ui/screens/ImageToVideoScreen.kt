@@ -16,6 +16,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -301,13 +305,12 @@ fun ImageToVideoScreen(
             )
         }
 
-        // Preview area + view mode toggle — collapse when typing in the prompt field
-        AnimatedVisibility(
-            visible = !expandPrompt,
-            modifier = Modifier.weight(1f),
-            enter = fadeIn(tween(150)),
-            exit = ExitTransition.None
-        ) {
+        // Wide screens (tablet / unfolded): preview on the left, controls on the right
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        val isWide = maxWidth >= 600.dp
+
+        val previewContent: @Composable (Modifier) -> Unit = { boxModifier ->
+            Box(modifier = boxModifier) {
             Column(modifier = Modifier.fillMaxSize()) {
                 Box(
                     modifier = Modifier
@@ -428,8 +431,10 @@ fun ImageToVideoScreen(
                     }
                 }
             }
+            }
         }
 
+        val controlsContent: @Composable ColumnScope.() -> Unit = {
         // Prompt Input — expands to fill screen above keyboard when focused
         OutlinedTextField(
             value = uiState.positivePrompt,
@@ -570,6 +575,33 @@ fun ImageToVideoScreen(
                 )
             }
         }
+        }
+
+        if (isWide) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                previewContent(Modifier.weight(1f).fillMaxHeight())
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight().padding(top = 8.dp),
+                    verticalArrangement = Arrangement.Bottom
+                ) {
+                    controlsContent()
+                }
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+        // Preview area + view mode toggle — collapse when typing in the prompt field
+        AnimatedVisibility(
+            visible = !expandPrompt,
+            modifier = Modifier.weight(1f),
+            enter = fadeIn(tween(150)),
+            exit = ExitTransition.None
+        ) {
+            previewContent(Modifier.fillMaxSize())
+        }
+                controlsContent()
+            }
+        }
+        } // End of BoxWithConstraints
     } // End of outer Column
 
     // Options bottom sheet
