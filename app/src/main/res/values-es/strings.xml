@@ -644,4 +644,5 @@
     <string name="title_comfyui_workflows">Flujos de ComfyUI</string>
     <string name="error_comfyui_workflows">No se pudieron cargar los flujos del servidor ComfyUI. Comprueba la conexión.</string>
     <string name="msg_comfyui_workflows_empty">Aún no hay flujos guardados en ComfyUI. Guarda uno en ComfyUI en tu PC (Workflow → Guardar).</string>
+    <string name="login_subtitle">Conéctate a tu servidor ComfyUI</string>
 </resources>

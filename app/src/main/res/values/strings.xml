@@ -673,4 +673,5 @@
     <string name="title_comfyui_workflows">ComfyUI workflows</string>
     <string name="error_comfyui_workflows">Could not load workflows from the ComfyUI server. Check that you are connected.</string>
     <string name="msg_comfyui_workflows_empty">No workflows saved in ComfyUI yet. Save one in ComfyUI on your PC (Workflow → Save).</string>
+    <string name="login_subtitle">Connect to your ComfyUI server</string>
 </resources>

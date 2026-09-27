@@ -64,6 +64,17 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 
 /**
  * Connection states for the login screen
@@ -485,92 +496,120 @@ fun LoginScreen() {
     }
 
     // UI
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color(0xFF1A8CFF).copy(alpha = 0.18f),
+                    0.45f to MaterialTheme.colorScheme.background,
+                    1f to MaterialTheme.colorScheme.background
+                )
+            )
             .statusBarsPadding()
             .navigationBarsPadding()
-            .imePadding()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .imePadding(),
+        contentAlignment = Alignment.Center
     ) {
-        // App logo and name
-        // The text has a -16dp offset to tuck it closer to the icon (which has built-in padding).
-        // To keep the visual center aligned, we offset the entire Row by half that amount (-8dp).
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.offset(x = (-8).dp)
+    Column(
+        modifier = Modifier
+            .widthIn(max = 440.dp)
+            .fillMaxWidth()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Logo
+        Image(
+            painter = painterResource(R.drawable.logo_cm),
+            contentDescription = null,
+            modifier = Modifier.size(96.dp)
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // App name: "Comfy" + accent "Mobile"
+        Text(
+            text = buildAnnotatedString {
+                append("Comfy")
+                withStyle(SpanStyle(color = Color(0xFF1A8CFF))) { append("Mobile") }
+            },
+            fontSize = 34.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.login_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(40.dp))
+
+        // Server card
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Image(
-                painter = painterResource(R.drawable.ic_comfychair_foreground),
-                contentDescription = null,
-                modifier = Modifier.size(112.dp)
-            )
-            Text(
-                text = stringResource(R.string.app_name),
-                fontSize = 36.sp,
-                fontFamily = FontFamily.Serif,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.offset(x = (-16).dp)
-            )
-        }
+            Column(modifier = Modifier.padding(20.dp)) {
+                // Server dropdown
+                ServerDropdown(
+                    servers = servers,
+                    selectedServer = selectedServer,
+                    onServerSelected = { server ->
+                        selectedServer = server
+                        serverStorage.setSelectedServerId(server.id)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-        Spacer(modifier = Modifier.height(48.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-        // Server dropdown
-        ServerDropdown(
-            servers = servers,
-            selectedServer = selectedServer,
-            onServerSelected = { server ->
-                selectedServer = server
-                serverStorage.setSelectedServerId(server.id)
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
+                // Connect split button with server management
+                ConnectionSplitButton(
+                    connectionState = connectionState,
+                    hasSelectedServer = selectedServer != null,
+                    isOfflineMode = isOfflineMode,
+                    onConnect = {
+                        if (selectedServer != null) {
+                            if (isOfflineMode) {
+                                attemptOfflineConnection(selectedServer!!)
+                            } else {
+                                attemptConnection(selectedServer!!)
+                            }
+                        }
+                    },
+                    onGoOnline = {
+                        AppSettings.setOfflineMode(context, false)
+                        isOfflineMode = false
+                    },
+                    onAddServer = {
+                        serverToEdit = null
+                        showServerDialog = true
+                    },
+                    onEditServer = {
+                        serverToEdit = selectedServer
+                        showServerDialog = true
+                    },
+                    onRemoveServer = {
+                        showDeleteConfirmation = true
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Connect split button with server management
-        ConnectionSplitButton(
-            connectionState = connectionState,
-            hasSelectedServer = selectedServer != null,
-            isOfflineMode = isOfflineMode,
-            onConnect = {
-                if (selectedServer != null) {
-                    if (isOfflineMode) {
-                        attemptOfflineConnection(selectedServer!!)
-                    } else {
-                        attemptConnection(selectedServer!!)
-                    }
+                // Warning message
+                warningMessage?.let { message ->
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontSize = 14.sp
+                    )
                 }
-            },
-            onGoOnline = {
-                AppSettings.setOfflineMode(context, false)
-                isOfflineMode = false
-            },
-            onAddServer = {
-                serverToEdit = null
-                showServerDialog = true
-            },
-            onEditServer = {
-                serverToEdit = selectedServer
-                showServerDialog = true
-            },
-            onRemoveServer = {
-                showDeleteConfirmation = true
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        // Warning message
-        warningMessage?.let { message ->
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = message,
-                color = MaterialTheme.colorScheme.secondary,
-                fontSize = 14.sp
-            )
+            }
         }
+    }
     }
 }

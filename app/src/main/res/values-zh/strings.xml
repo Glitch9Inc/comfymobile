@@ -644,4 +644,5 @@
     <string name="title_comfyui_workflows">ComfyUI 工作流</string>
     <string name="error_comfyui_workflows">无法从 ComfyUI 服务器加载工作流。请检查连接。</string>
     <string name="msg_comfyui_workflows_empty">ComfyUI 中还没有保存的工作流。请在电脑上的 ComfyUI 中保存一个（Workflow → Save）。</string>
+    <string name="login_subtitle">连接到你的 ComfyUI 服务器</string>
 </resources>

@@ -330,12 +330,6 @@ fun TextToVideoScreen(
                     }
                     // Show placeholder - app logo
                     else -> {
-                        Image(
-                            painter = painterResource(R.drawable.ic_comfychair_foreground),
-                            contentDescription = stringResource(R.string.placeholder_video),
-                            modifier = Modifier.size(Dimensions.PlaceholderLogoSize),
-                            contentScale = ContentScale.Fit
-                        )
                     }
                 }
             }

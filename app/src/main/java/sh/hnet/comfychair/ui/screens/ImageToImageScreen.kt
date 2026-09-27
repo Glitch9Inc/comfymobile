@@ -387,12 +387,6 @@ fun ImageToImageScreen(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     modifier = Modifier.clickable { imagePickerLauncher.launch("image/*") }
                                 ) {
-                                    Image(
-                                        painter = painterResource(R.drawable.ic_comfychair_foreground),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(Dimensions.PlaceholderLogoSize),
-                                        contentScale = ContentScale.Fit
-                                    )
                                     Text(
                                         text = stringResource(R.string.msg_no_source_image),
                                         style = MaterialTheme.typography.bodyMedium,
@@ -411,12 +405,6 @@ fun ImageToImageScreen(
                                 )
                             } else {
                         // Placeholder - app logo
-                                Image(
-                                    painter = painterResource(R.drawable.ic_comfychair_foreground),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(Dimensions.PlaceholderLogoSize),
-                                    contentScale = ContentScale.Fit
-                                )
                             }
                         }
                     }
