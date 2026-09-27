@@ -621,4 +621,6 @@
 
     <!-- Metadata actions -->
     <string name="metadata_save_prompt">Guardar prompt en la biblioteca</string>
+    <string name="label_save_to_phone">Guardar resultados en Fotos</string>
+    <string name="desc_save_to_phone">Guardar automáticamente imágenes y vídeos generados en Pictures/ComfyChair y Movies/ComfyChair</string>
 </resources>

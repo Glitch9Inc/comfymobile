@@ -18,6 +18,7 @@ import sh.hnet.comfychair.cache.MediaCacheKey
 import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.storage.AppSettings
 import sh.hnet.comfychair.storage.GalleryMetadataCache
+import sh.hnet.comfychair.storage.LocalGalleryStore
 import sh.hnet.comfychair.util.DebugLogger
 import sh.hnet.comfychair.viewmodel.GalleryItem
 
@@ -233,6 +234,13 @@ class GalleryRepository private constructor() {
 
             var items = parseHistoryToGalleryItems(historyJson)
 
+            // Merge with items kept on the device (survive server-side deletion)
+            if (context != null && serverId != null) {
+                items = withContext(Dispatchers.IO) {
+                    LocalGalleryStore.mergeWithServer(context, serverId, items)
+                }
+            }
+
             // Filter out pending deletions to prevent reappearing
             if (deletionsSnapshot.isNotEmpty()) {
                 items = items.filter { it.promptId !in deletionsSnapshot }
@@ -249,6 +257,7 @@ class GalleryRepository private constructor() {
                 withContext(Dispatchers.IO) {
                     GalleryMetadataCache.saveMetadata(context, serverId, items)
                 }
+                startLocalSync(context, serverId, client)
             }
 
             return true
@@ -261,6 +270,23 @@ class GalleryRepository private constructor() {
         }
     }
 
+    // Only one download sync at a time
+    private var localSyncJob: Job? = null
+
+    /**
+     * Download new items to the device (and phone Photos) in the background.
+     */
+    private fun startLocalSync(context: Context, serverId: String, client: ComfyUIClient) {
+        if (localSyncJob?.isActive == true) return
+        localSyncJob = scope.launch(Dispatchers.IO) {
+            try {
+                LocalGalleryStore.syncDownloads(context, serverId, client)
+            } catch (e: Exception) {
+                DebugLogger.w(TAG, "Local sync failed: ${e.message}")
+            }
+        }
+    }
+
     /**
      * Load gallery data from offline cache.
      * @return true if cache was loaded successfully, false otherwise
@@ -269,7 +295,8 @@ class GalleryRepository private constructor() {
         val context = applicationContext ?: return false
         val serverId = ConnectionManager.currentServerId ?: return false
 
-        val cachedItems = GalleryMetadataCache.loadMetadata(context, serverId)
+        val cachedItems = LocalGalleryStore.storedItems(context, serverId).takeIf { it.isNotEmpty() }
+            ?: GalleryMetadataCache.loadMetadata(context, serverId)
         if (cachedItems != null) {
             _galleryItems.value = cachedItems
             _lastRefreshTime.value = GalleryMetadataCache.getCacheTimestamp(context, serverId)
@@ -294,6 +321,7 @@ class GalleryRepository private constructor() {
      * @param promptId The prompt ID of the item to remove
      */
     fun removeItemLocally(promptId: String) {
+        applicationContext?.let { LocalGalleryStore.remove(it, ConnectionManager.currentServerId, setOf(promptId)) }
         val currentItems = _galleryItems.value.toMutableList()
         currentItems.removeAll { it.promptId == promptId }
         _galleryItems.value = currentItems
@@ -327,6 +355,9 @@ class GalleryRepository private constructor() {
             if (success) {
                 // Evict from media cache
                 MediaCache.evict(MediaCacheKey(item.promptId, item.filename))
+                applicationContext?.let {
+                    LocalGalleryStore.remove(it, ConnectionManager.currentServerId, setOf(item.promptId))
+                }
             }
 
             return success
@@ -369,6 +400,9 @@ class GalleryRepository private constructor() {
                 }
                 if (success) {
                     successCount++
+                    applicationContext?.let {
+                        LocalGalleryStore.remove(it, ConnectionManager.currentServerId, setOf(promptId))
+                    }
                     // Evict from media cache
                     itemsToDelete.filter { it.promptId == promptId }.forEach { item ->
                         MediaCache.evict(MediaCacheKey(item.promptId, item.filename))
@@ -399,6 +433,8 @@ class GalleryRepository private constructor() {
             pendingDeletions.clear()
         }
         stopPeriodicRefresh()
+        localSyncJob?.cancel()
+        localSyncJob = null
         // Clear media cache (preserves disk cache for offline mode)
         MediaCache.reset()
     }

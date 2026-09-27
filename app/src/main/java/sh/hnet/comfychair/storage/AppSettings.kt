@@ -210,4 +210,21 @@ object AppSettings {
             .apply()
     }
 
+    private const val KEY_SAVE_TO_PHONE = "save_to_phone"
+
+    /**
+     * Whether gallery outputs are also saved to the phone's Photos
+     * (Pictures/ComfyChair, Movies/ComfyChair). Default: true.
+     */
+    fun isSaveToPhoneEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_SAVE_TO_PHONE, true)
+    }
+
+    fun setSaveToPhoneEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_SAVE_TO_PHONE, enabled)
+            .apply()
+    }
 }

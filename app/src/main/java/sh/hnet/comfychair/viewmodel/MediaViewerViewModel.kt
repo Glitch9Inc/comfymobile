@@ -26,6 +26,7 @@ import sh.hnet.comfychair.cache.MediaCache
 import sh.hnet.comfychair.cache.MediaCacheKey
 import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.repository.GalleryRepository
+import sh.hnet.comfychair.storage.LocalGalleryStore
 import sh.hnet.comfychair.util.GenerationMetadata
 import sh.hnet.comfychair.util.MetadataParser
 import sh.hnet.comfychair.util.Mp4MetadataExtractor
@@ -414,6 +415,10 @@ class MediaViewerViewModel : ViewModel() {
                     } catch (e: Exception) {
                         null
                     }
+                }
+                // Permanent on-device copy
+                LocalGalleryStore.localFile(context, ConnectionManager.currentServerId, MediaCacheKey(item.promptId, item.filename)) != null -> {
+                    LocalGalleryStore.localFile(context, ConnectionManager.currentServerId, MediaCacheKey(item.promptId, item.filename))?.readBytes()
                 }
                 // For items with server file info and a client, fetch from server
                 item.filename.isNotEmpty() && ConnectionManager.clientOrNull != null -> {

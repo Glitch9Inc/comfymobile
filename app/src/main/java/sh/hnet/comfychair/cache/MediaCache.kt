@@ -16,6 +16,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import sh.hnet.comfychair.ComfyUIClient
 import sh.hnet.comfychair.connection.ConnectionManager
+import sh.hnet.comfychair.storage.LocalGalleryStore
 import sh.hnet.comfychair.util.DebugLogger
 import java.io.File
 import java.io.FileOutputStream
@@ -172,6 +173,34 @@ object MediaCache {
      */
     private fun getDiskCacheDir(context: Context): File {
         return File(context.cacheDir, DISK_CACHE_DIR).apply { mkdirs() }
+    }
+
+    /**
+     * Permanent on-device copy of a gallery item (see LocalGalleryStore), if any.
+     */
+    private fun localFile(key: MediaCacheKey): File? {
+        val context = applicationContext ?: return null
+        return LocalGalleryStore.localFile(context, ConnectionManager.currentServerId, key)
+    }
+
+    /**
+     * Decode a bitmap (or video thumbnail) from the permanent local copy.
+     */
+    private fun loadLocalBitmap(key: MediaCacheKey, file: File, isVideo: Boolean, context: Context, priority: Int): Bitmap? {
+        val keyStr = key.keyString
+        val bitmap = try {
+            if (!isVideo) {
+                BitmapFactory.decodeFile(file.absolutePath)
+            } else {
+                val (dimensions, thumbnail) = extractVideoData(keyStr, file.readBytes(), context)
+                dimensions?.let { videoDimensionsCache[keyStr] = it }
+                thumbnail
+            }
+        } catch (_: Exception) {
+            null
+        }
+        if (bitmap != null && isMemoryFirstMode) bitmapCache.put(keyStr, bitmap, priority)
+        return bitmap
     }
 
     /**
@@ -483,6 +512,14 @@ object MediaCache {
                 DebugLogger.d(TAG, "fetchBitmap: $keyStr from memory cache -> HIT")
                 return it
             }
+        }
+
+        // Permanent local copy (works offline and after server-side deletion)
+        localFile(key)?.let { file ->
+            withContext(Dispatchers.IO) { loadLocalBitmap(key, file, isVideo, context, priority) }?.let { return it }
+        }
+
+        if (isMemoryFirstMode) {
 
             // No client in offline mode - can't fetch from server
             if (client == null) {
@@ -660,11 +697,18 @@ object MediaCache {
         val client = comfyUIClient  // May be null in offline mode
 
         if (isMemoryFirstMode) {
-            // Memory-first: check memory cache first
             bitmapCache.get(key.keyString)?.let {
                 DebugLogger.d(TAG, "fetchImage: ${key.keyString} from memory cache -> HIT")
                 return it
             }
+        }
+
+        // Permanent local copy (works offline and after server-side deletion)
+        localFile(key)?.let { file ->
+            withContext(Dispatchers.IO) { loadLocalBitmap(key, file, false, context, priority) }?.let { return it }
+        }
+
+        if (isMemoryFirstMode) {
 
             // No client in offline mode - can't fetch from server
             if (client == null) {
@@ -732,11 +776,24 @@ object MediaCache {
         val client = comfyUIClient  // May be null in offline mode
 
         if (isMemoryFirstMode) {
-            // Memory-first: check memory cache first
             videoCache.get(key.keyString)?.let {
                 DebugLogger.d(TAG, "fetchVideoBytes: ${key.keyString} from memory cache -> HIT")
                 return it
             }
+        }
+
+        // Permanent local copy (works offline and after server-side deletion)
+        localFile(key)?.let { file ->
+            val bytes = withContext(Dispatchers.IO) {
+                try { file.readBytes() } catch (_: Exception) { null }
+            }
+            if (bytes != null) {
+                if (isMemoryFirstMode) videoCache.put(key.keyString, bytes, PriorityLruCache.PRIORITY_DEFAULT)
+                return bytes
+            }
+        }
+
+        if (isMemoryFirstMode) {
 
             // No client in offline mode - can't fetch from server
             if (client == null) {
@@ -805,6 +862,15 @@ object MediaCache {
      */
     suspend fun getVideoUri(key: MediaCacheKey, context: Context): Uri? {
         val keyStr = key.keyString
+
+        // Permanent local copy: play it directly
+        localFile(key)?.let { file ->
+            try {
+                return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            } catch (_: Exception) {
+                // Fall through to cache
+            }
+        }
 
         if (isMemoryFirstMode) {
             // Memory-first: return cached URI if available

@@ -64,6 +64,7 @@ fun ApplicationSettingsScreen(
 ) {
     val context = LocalContext.current
     val isLivePreviewEnabled by viewModel.isLivePreviewEnabled.collectAsState()
+    val isSaveToPhoneEnabled by viewModel.isSaveToPhoneEnabled.collectAsState()
     val isMemoryFirstCache by viewModel.isMemoryFirstCache.collectAsState()
     val isMediaCacheDisabled by viewModel.isMediaCacheDisabled.collectAsState()
     val isDebugLoggingEnabled by viewModel.isDebugLoggingEnabled.collectAsState()
@@ -394,6 +395,31 @@ fun ApplicationSettingsScreen(
                     Switch(
                         checked = isLivePreviewEnabled,
                         onCheckedChange = { viewModel.setLivePreviewEnabled(context, it) }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Save gallery outputs to phone Photos toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.label_save_to_phone),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.desc_save_to_phone),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isSaveToPhoneEnabled,
+                        onCheckedChange = { viewModel.setSaveToPhoneEnabled(context, it) }
                     )
                 }
 
