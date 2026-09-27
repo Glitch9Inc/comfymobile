@@ -623,4 +623,21 @@
     <string name="metadata_save_prompt">Zapisz prompt do biblioteki</string>
     <string name="label_save_to_phone">Zapisuj wyniki w Zdjęciach</string>
     <string name="desc_save_to_phone">Automatycznie zapisuj wygenerowane obrazy i filmy w Pictures/ComfyChair i Movies/ComfyChair</string>
+    <string name="gallery_view_grid_2">2 kolumny</string>
+    <string name="gallery_view_grid_3">3 kolumny</string>
+    <string name="gallery_view_grid_4">4 kolumny</string>
+    <string name="gallery_view_masonry">Oryginalne proporcje</string>
+    <string name="gallery_view_single">Jedna kolumna</string>
+    <string name="gallery_album_all">Wszystko</string>
+    <string name="gallery_new_album">Nowy album</string>
+    <string name="gallery_edit_album">Edytuj album</string>
+    <string name="gallery_add_to_album">Dodaj do albumu</string>
+    <string name="gallery_remove_from_album">Usuń z albumu</string>
+    <string name="gallery_album_name_hint">Nazwa albumu</string>
+    <string name="gallery_delete_album">Usuń album</string>
+    <string name="gallery_delete_album_note">Elementy pozostaną w galerii.</string>
+    <string name="gallery_button_create">Utwórz</string>
+    <string name="msg_added_to_album">Dodano do albumu</string>
+    <string name="msg_removed_from_album">Usunięto z albumu</string>
+    <string name="msg_album_empty">Ten album jest pusty</string>
 </resources>

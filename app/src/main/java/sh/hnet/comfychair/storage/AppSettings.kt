@@ -227,4 +227,19 @@ object AppSettings {
             .putBoolean(KEY_SAVE_TO_PHONE, enabled)
             .apply()
     }
+
+    private const val KEY_GALLERY_VIEW_MODE = "gallery_view_mode"
+
+    /** Gallery view mode name (see GalleryViewMode). */
+    fun getGalleryViewMode(context: Context): String? {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_GALLERY_VIEW_MODE, null)
+    }
+
+    fun setGalleryViewMode(context: Context, mode: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_GALLERY_VIEW_MODE, mode)
+            .apply()
+    }
 }

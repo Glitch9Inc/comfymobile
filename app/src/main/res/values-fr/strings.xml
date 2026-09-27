@@ -623,4 +623,21 @@
     <string name="metadata_save_prompt">Enregistrer le prompt dans la bibliothèque</string>
     <string name="label_save_to_phone">Enregistrer dans Photos</string>
     <string name="desc_save_to_phone">Enregistrer automatiquement les images et vidéos générées dans Pictures/ComfyChair et Movies/ComfyChair</string>
+    <string name="gallery_view_grid_2">2 colonnes</string>
+    <string name="gallery_view_grid_3">3 colonnes</string>
+    <string name="gallery_view_grid_4">4 colonnes</string>
+    <string name="gallery_view_masonry">Format d\'origine</string>
+    <string name="gallery_view_single">Une colonne</string>
+    <string name="gallery_album_all">Tout</string>
+    <string name="gallery_new_album">Nouvel album</string>
+    <string name="gallery_edit_album">Modifier l\'album</string>
+    <string name="gallery_add_to_album">Ajouter à l\'album</string>
+    <string name="gallery_remove_from_album">Retirer de l\'album</string>
+    <string name="gallery_album_name_hint">Nom de l\'album</string>
+    <string name="gallery_delete_album">Supprimer l\'album</string>
+    <string name="gallery_delete_album_note">Les éléments restent dans la galerie.</string>
+    <string name="gallery_button_create">Créer</string>
+    <string name="msg_added_to_album">Ajouté à l\'album</string>
+    <string name="msg_removed_from_album">Retiré de l\'album</string>
+    <string name="msg_album_empty">Cet album est vide</string>
 </resources>

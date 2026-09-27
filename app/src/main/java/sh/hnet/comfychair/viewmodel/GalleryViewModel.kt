@@ -22,7 +22,11 @@ import kotlinx.coroutines.withContext
 import sh.hnet.comfychair.R
 import sh.hnet.comfychair.cache.MediaCache
 import sh.hnet.comfychair.cache.MediaCacheKey
+import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.repository.GalleryRepository
+import sh.hnet.comfychair.storage.AppSettings
+import sh.hnet.comfychair.storage.GalleryAlbum
+import sh.hnet.comfychair.storage.GalleryAlbumStore
 import sh.hnet.comfychair.util.DebugLogger
 import java.io.File
 
@@ -43,10 +47,31 @@ data class GalleryItem(
 }
 
 /**
+ * How the gallery grid is laid out.
+ * [square] = thumbnails cropped to squares; otherwise original aspect ratio.
+ */
+enum class GalleryViewMode(val columns: Int, val square: Boolean) {
+    GRID_2(2, true),
+    GRID_3(3, true),
+    GRID_4(4, true),
+    MASONRY(2, false),
+    SINGLE(1, false)
+}
+
+/**
  * UI state for the Gallery screen
  */
 data class GalleryUiState(
+    /** Items shown (filtered by the selected album) */
     val items: List<GalleryItem> = emptyList(),
+    /** Total number of items before album filtering */
+    val totalCount: Int = 0,
+    val viewMode: GalleryViewMode = GalleryViewMode.GRID_2,
+    val albums: List<GalleryAlbum> = emptyList(),
+    /** null = all items */
+    val selectedAlbumId: String? = null,
+    /** Number of existing gallery items in each album (albumId -> count) */
+    val albumCounts: Map<String, Int> = emptyMap(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val selectedItems: Set<String> = emptySet(), // Set of "${promptId}_${filename}" keys
@@ -79,6 +104,16 @@ class GalleryViewModel : ViewModel() {
     private val _selectedItems = MutableStateFlow<Set<String>>(emptySet())
     private val _isSelectionMode = MutableStateFlow(false)
 
+    // View mode and albums
+    private data class ViewState(
+        val viewMode: GalleryViewMode = GalleryViewMode.GRID_2,
+        val albums: List<GalleryAlbum> = emptyList(),
+        val selectedAlbumId: String? = null
+    )
+    private val _viewState = MutableStateFlow(ViewState())
+    private var appContext: Context? = null
+    private var albumsServerId: String? = null
+
     // Combine repository state with local selection state
     private val _uiState = MutableStateFlow(GalleryUiState())
     val uiState: StateFlow<GalleryUiState> = _uiState.asStateFlow()
@@ -90,14 +125,23 @@ class GalleryViewModel : ViewModel() {
         // Observe repository state and combine with local selection state
         viewModelScope.launch {
             combine(
-                repository.galleryItems,
-                repository.isLoading,
-                repository.isManualRefreshing,
+                combine(
+                    repository.galleryItems,
+                    repository.isLoading,
+                    repository.isManualRefreshing
+                ) { items, isLoading, isManualRefreshing -> Triple(items, isLoading, isManualRefreshing) },
                 _selectedItems,
-                _isSelectionMode
-            ) { items, isLoading, isManualRefreshing, selectedItems, isSelectionMode ->
+                _isSelectionMode,
+                _viewState
+            ) { (items, isLoading, isManualRefreshing), selectedItems, isSelectionMode, view ->
+                val album = view.albums.firstOrNull { it.id == view.selectedAlbumId }
                 GalleryUiState(
-                    items = items,
+                    items = if (album == null) items else items.filter { getItemKey(it) in album.members },
+                    totalCount = items.size,
+                    viewMode = view.viewMode,
+                    albums = view.albums,
+                    selectedAlbumId = album?.id,
+                    albumCounts = view.albums.associate { a -> a.id to items.count { getItemKey(it) in a.members } },
                     isLoading = isLoading,
                     isRefreshing = isManualRefreshing, // Only show indicator for manual refresh
                     selectedItems = selectedItems,
@@ -109,9 +153,93 @@ class GalleryViewModel : ViewModel() {
         }
     }
 
-    fun initialize() {
+    fun initialize(context: Context) {
         // MediaCache is used for all fetch operations
         // Repository is already initialized by GenerationViewModel
+        appContext = context.applicationContext
+        val mode = AppSettings.getGalleryViewMode(context)
+            ?.let { name -> GalleryViewMode.entries.firstOrNull { it.name == name } }
+            ?: GalleryViewMode.GRID_2
+        _viewState.value = _viewState.value.copy(viewMode = mode)
+        reloadAlbums()
+    }
+
+    // View mode
+
+    fun setViewMode(mode: GalleryViewMode) {
+        _viewState.value = _viewState.value.copy(viewMode = mode)
+        appContext?.let { AppSettings.setGalleryViewMode(it, mode.name) }
+    }
+
+    // Albums
+
+    /** (Re)load albums for the current server. Safe to call often. */
+    fun reloadAlbums() {
+        val ctx = appContext ?: return
+        val serverId = ConnectionManager.currentServerId ?: return
+        if (serverId == albumsServerId) return
+        albumsServerId = serverId
+        viewModelScope.launch {
+            val albums = withContext(Dispatchers.IO) { GalleryAlbumStore.load(ctx, serverId) }
+            _viewState.value = _viewState.value.copy(albums = albums, selectedAlbumId = null)
+        }
+    }
+
+    private fun updateAlbums(transform: (List<GalleryAlbum>) -> List<GalleryAlbum>) {
+        val albums = transform(_viewState.value.albums)
+        val selected = _viewState.value.selectedAlbumId?.takeIf { id -> albums.any { it.id == id } }
+        _viewState.value = _viewState.value.copy(albums = albums, selectedAlbumId = selected)
+        val ctx = appContext ?: return
+        val serverId = albumsServerId ?: return
+        viewModelScope.launch(Dispatchers.IO) { GalleryAlbumStore.save(ctx, serverId, albums) }
+    }
+
+    fun selectAlbum(albumId: String?) {
+        clearSelection()
+        _viewState.value = _viewState.value.copy(selectedAlbumId = albumId)
+    }
+
+    /** Create an album; if items are selected, they are added to it. */
+    fun createAlbum(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        val album = GalleryAlbum(
+            id = java.util.UUID.randomUUID().toString(),
+            name = trimmed,
+            members = _selectedItems.value
+        )
+        updateAlbums { it + album }
+        if (album.members.isNotEmpty()) {
+            clearSelection()
+            viewModelScope.launch { _events.emit(GalleryEvent.ShowToast(R.string.msg_added_to_album)) }
+        }
+    }
+
+    fun renameAlbum(albumId: String, name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        updateAlbums { list -> list.map { if (it.id == albumId) it.copy(name = trimmed) else it } }
+    }
+
+    /** Deletes only the album; the items stay in the gallery. */
+    fun deleteAlbum(albumId: String) {
+        updateAlbums { list -> list.filterNot { it.id == albumId } }
+    }
+
+    fun addSelectedToAlbum(albumId: String) {
+        val keys = _selectedItems.value
+        if (keys.isEmpty()) return
+        updateAlbums { list -> list.map { if (it.id == albumId) it.copy(members = it.members + keys) else it } }
+        clearSelection()
+        viewModelScope.launch { _events.emit(GalleryEvent.ShowToast(R.string.msg_added_to_album)) }
+    }
+
+    fun removeSelectedFromAlbum(albumId: String) {
+        val keys = _selectedItems.value
+        if (keys.isEmpty()) return
+        updateAlbums { list -> list.map { if (it.id == albumId) it.copy(members = it.members - keys) else it } }
+        clearSelection()
+        viewModelScope.launch { _events.emit(GalleryEvent.ShowToast(R.string.msg_removed_from_album)) }
     }
 
     /**
