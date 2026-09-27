@@ -280,7 +280,7 @@ fun TextToImageScreen(
         val previewContent: @Composable (Modifier) -> Unit = { boxModifier ->
             Box(
                 modifier = boxModifier
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .background(MaterialTheme.colorScheme.background)
                     .clickable(enabled = uiState.previewBitmap != null && !isThisScreenExecuting) {
                         // Launch MediaViewer for single image
                         uiState.previewBitmap?.let { bitmap ->
@@ -328,11 +328,11 @@ fun TextToImageScreen(
             label = { Text(stringResource(R.string.hint_prompt)) },
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (expandPrompt) Modifier.weight(1f) else Modifier)
+                .then(if (expandPrompt || isWide) Modifier.weight(1f) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .onFocusChanged { promptFocused = it.isFocused },
             minLines = 2,
-            maxLines = if (expandPrompt) Int.MAX_VALUE else 4,
+            maxLines = if (expandPrompt || isWide) Int.MAX_VALUE else 4,
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = spellCheckEnabled),
             visualTransformation = positivePromptTransformation,
             leadingIcon = {

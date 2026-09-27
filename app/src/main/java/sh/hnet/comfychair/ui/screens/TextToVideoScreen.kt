@@ -295,7 +295,7 @@ fun TextToVideoScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .heightIn(min = 150.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .background(MaterialTheme.colorScheme.background)
                     .clickable(enabled = videoUri != null) {
                     // Launch MediaViewer for single video
                         videoUri?.let { uri ->
@@ -353,11 +353,11 @@ fun TextToVideoScreen(
             label = { Text(stringResource(R.string.hint_prompt)) },
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (expandPrompt) Modifier.weight(1f) else Modifier)
+                .then(if (expandPrompt || isWide) Modifier.weight(1f) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .onFocusChanged { promptFocused = it.isFocused },
             minLines = 2,
-            maxLines = if (expandPrompt) Int.MAX_VALUE else 4,
+            maxLines = if (expandPrompt || isWide) Int.MAX_VALUE else 4,
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = spellCheckEnabled),
             visualTransformation = positivePromptTransformation,
             leadingIcon = {
