@@ -18,10 +18,10 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Build dev APK (shrunk)
+        run: ./gradlew --no-daemon assembleDev
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/*.apk comfymobile-dev.apk
+        run: cp app/build/outputs/apk/dev/*.apk comfymobile-dev.apk && ls -lh comfymobile-dev.apk
       - uses: actions/upload-artifact@v4
         with:
           name: comfychair-debug-apk

@@ -27,6 +27,13 @@ android {
             )
             signingConfig = signingConfigs.getByName("debug")
         }
+        // Small, shrunk test build for sideloading (CI publishes this)
+        create("dev") {
+            initWith(getByName("release"))
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
