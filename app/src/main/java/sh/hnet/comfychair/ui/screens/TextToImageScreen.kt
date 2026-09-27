@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import sh.hnet.comfychair.MediaViewerActivity
 import sh.hnet.comfychair.R
+import sh.hnet.comfychair.ui.components.shared.ResolutionPresetRow
 import sh.hnet.comfychair.WorkflowEditorActivity
 import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.model.ScreenType
@@ -352,6 +353,21 @@ fun TextToImageScreen(
                 }
             }
         )
+
+        // Quick resolution presets (2:3 / 1:1 / 3:2)
+        if (uiState.capabilities.hasWidth && uiState.capabilities.hasHeight) {
+            ResolutionPresetRow(
+                width = uiState.width,
+                height = uiState.height,
+                onSelect = { w, h ->
+                    textToImageViewModel.onWidthChange(w.toString())
+                    textToImageViewModel.onHeightChange(h.toString())
+                },
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 8.dp)
+            )
+        }
 
         // Generate and Options buttons
         Row(
