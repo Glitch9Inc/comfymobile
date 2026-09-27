@@ -5,6 +5,9 @@ on:
     branches: [ "feature/**" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,7 +20,21 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Build debug APK
         run: ./gradlew --no-daemon assembleDebug
+      - name: Rename APK
+        run: cp app/build/outputs/apk/debug/*.apk comfymobile-dev.apk
       - uses: actions/upload-artifact@v4
         with:
           name: comfychair-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: comfymobile-dev.apk
+      # Fixed public download link:
+      # https://github.com/<owner>/<repo>/releases/download/dev-latest/comfymobile-dev.apk
+      - name: Publish to dev-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git tag -f dev-latest
+          git push -f origin dev-latest
+          gh release view dev-latest >/dev/null 2>&1 || \
+            gh release create dev-latest --prerelease --title "Dev build (latest)" --notes "Latest test build from feature branches."
+          gh release edit dev-latest --notes "Latest test build: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}"
+          gh release upload dev-latest comfymobile-dev.apk --clobber
