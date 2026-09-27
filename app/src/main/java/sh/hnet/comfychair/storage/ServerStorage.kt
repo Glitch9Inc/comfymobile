@@ -17,10 +17,26 @@ class ServerStorage(context: Context) {
     }
 
     /**
+     * First run only (no server list saved yet): add the default server and select it.
+     * Deleting it later keeps it deleted, because the list then exists.
+     */
+    private fun seedDefaultServer(): List<Server> {
+        val server = Server(
+            id = "default-home-pc",
+            name = "Home PC",
+            hostname = "100.104.57.118",
+            port = 8188
+        )
+        saveServers(listOf(server))
+        if (getSelectedServerId() == null) setSelectedServerId(server.id)
+        return listOf(server)
+    }
+
+    /**
      * Get all saved servers.
      */
     fun getServers(): List<Server> {
-        val json = prefs.getString(KEY_SERVERS_JSON, null) ?: return emptyList()
+        val json = prefs.getString(KEY_SERVERS_JSON, null) ?: return seedDefaultServer()
         return try {
             val array = JSONArray(json)
             (0 until array.length()).mapNotNull { i ->

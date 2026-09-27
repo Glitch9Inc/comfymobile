@@ -125,7 +125,7 @@ object AppSettings {
      */
     fun isShowBuiltInWorkflows(context: Context): Boolean {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SHOW_BUILT_IN_WORKFLOWS, true)  // Default: true (show built-in)
+            .getBoolean(KEY_SHOW_BUILT_IN_WORKFLOWS, false)  // Default: false (only your own workflows)
     }
 
     /**

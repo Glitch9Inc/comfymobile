@@ -505,6 +505,7 @@ class SettingsViewModel : ViewModel() {
     fun setShowBuiltInWorkflows(context: Context, show: Boolean) {
         AppSettings.setShowBuiltInWorkflows(context, show)
         _isShowBuiltInWorkflows.value = show
+        WorkflowManager.reloadWorkflows()
         // Notify that workflows need to be reloaded
         viewModelScope.launch {
             _events.emit(SettingsEvent.RefreshNeeded)
