@@ -21,3 +21,6 @@
 #-renamesourcefileattribute SourceFile
 # Shrink only; keep names readable in crash logs
 -dontobfuscate
+
+# Built-in workflows are discovered by scanning R.raw fields via reflection
+-keep class sh.hnet.comfychair.R$raw { public static <fields>; }
