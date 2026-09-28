@@ -44,15 +44,35 @@ object PromptTitle {
             low !in BOILERPLATE && !COUNT_TAG.matches(low) && low.length > 1 && !low.startsWith("score")
         }.distinctBy { it.lowercase() }
 
-        val picked = (meaningful.ifEmpty { tags }).take(MAX_TAGS).map { titleCase(it) }
+        val picked = (meaningful.ifEmpty { tags }).take(MAX_TAGS).map { titleCase(shortenSentence(it)) }
         var title = picked.joinToString(" · ")
         if (title.length > MAX_LEN) title = title.take(MAX_LEN).trimEnd(' ', '·') + "…"
         return title.ifEmpty { "Prompt" }
     }
 
-    // Capitalize words written in Latin letters; leave other scripts as they are
+    private val LEADING_FILLER = Regex(
+        """^(?:(?:a|an|the)\s+)?(?:(?:warm|cozy|beautiful|high quality|cinematic|detailed)\s+(?:and\s+)?)*(?:(?:photo|picture|image|illustration|painting|shot|portrait)\s+)?(?:of\s+)?(?:(?:a|an|the)\s+)?""",
+        RegexOption.IGNORE_CASE
+    )
+    private val SMALL_WORDS = setOf("a", "an", "the", "of", "and", "or", "in", "on", "at", "with", "by", "to", "for")
+
+    // Sentence-style prompt ("A warm photo of a woman sitting in a chair") → "Woman Sitting in a Chair"
+    private fun shortenSentence(tag: String): String {
+        val words = tag.split(' ')
+        if (words.size <= 4) return tag
+        val stripped = LEADING_FILLER.replace(tag, "").ifBlank { tag }
+        val cut = stripped.split(' ').take(4).toMutableList()
+        while (cut.size > 1 && cut.last().lowercase() in SMALL_WORDS) cut.removeAt(cut.lastIndex)
+        return cut.joinToString(" ")
+    }
+
+    // Capitalize Latin-letter words (small words stay lower case except first); other scripts unchanged
     private fun titleCase(s: String): String =
-        s.split(' ').joinToString(" ") { w ->
-            if (w.isNotEmpty() && w[0].isLowerCase() && w[0] in 'a'..'z') w.replaceFirstChar { it.uppercase() } else w
-        }
+        s.split(' ').mapIndexed { i, w ->
+            when {
+                w.isEmpty() || w[0] !in 'a'..'z' -> w
+                i > 0 && w in SMALL_WORDS -> w
+                else -> w.replaceFirstChar { it.uppercase() }
+            }
+        }.joinToString(" ")
 }

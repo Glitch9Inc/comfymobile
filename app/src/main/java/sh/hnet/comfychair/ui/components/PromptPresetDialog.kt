@@ -125,14 +125,7 @@ fun PromptPresetDialog(
             }
             return typed
         }
-        val base = prompt.split(',', '\n')
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .take(3)
-            .joinToString(", ")
-            .take(30)
-            .trim()
-            .ifEmpty { "Prompt" }
+        val base = sh.hnet.comfychair.util.PromptTitle.from(prompt)
         var candidate = base
         var n = 2
         while (isTaken(candidate)) candidate = "$base ${n++}"
