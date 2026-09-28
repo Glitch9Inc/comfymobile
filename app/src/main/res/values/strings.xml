@@ -674,4 +674,8 @@
     <string name="error_comfyui_workflows">Could not load workflows from the ComfyUI server. Check that you are connected.</string>
     <string name="msg_comfyui_workflows_empty">No workflows saved in ComfyUI yet. Save one in ComfyUI on your PC (Workflow → Save).</string>
     <string name="login_subtitle">Connect to your ComfyUI server</string>
+    <string name="button_copy_settings">Copy settings</string>
+    <string name="msg_no_generation_info">No generation info found for this image</string>
+    <string name="msg_settings_copied">Settings copied to the form</string>
+    <string name="label_more">More</string>
 </resources>
