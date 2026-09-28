@@ -325,7 +325,7 @@ fun TextToImageScreen(
                 .then(if (expandPrompt || isWide) Modifier.weight(1f) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .onFocusChanged { promptFocused = it.isFocused },
-            minLines = 2,
+            minLines = 3,
             maxLines = if (expandPrompt || isWide) Int.MAX_VALUE else 4,
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = spellCheckEnabled),
             visualTransformation = positivePromptTransformation,
