@@ -135,9 +135,12 @@ class GalleryViewModel : ViewModel() {
                 _viewState
             ) { (items, isLoading, isManualRefreshing), selectedItems, isSelectionMode, view ->
                 val album = view.albums.firstOrNull { it.id == view.selectedAlbumId }
+                // "All" shows only items not yet sorted into any album
+                val inAnyAlbum = view.albums.flatMapTo(HashSet()) { it.members }
+                val unsorted = items.filter { getItemKey(it) !in inAnyAlbum }
                 GalleryUiState(
-                    items = if (album == null) items else items.filter { getItemKey(it) in album.members },
-                    totalCount = items.size,
+                    items = if (album == null) unsorted else items.filter { getItemKey(it) in album.members },
+                    totalCount = unsorted.size,
                     viewMode = view.viewMode,
                     albums = view.albums,
                     selectedAlbumId = album?.id,
