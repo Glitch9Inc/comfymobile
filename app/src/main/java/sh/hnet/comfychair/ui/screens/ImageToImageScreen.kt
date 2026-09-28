@@ -103,6 +103,10 @@ import sh.hnet.comfychair.viewmodel.ImageToImageViewMode
 import sh.hnet.comfychair.viewmodel.ImageToImageViewModel
 import sh.hnet.comfychair.viewmodel.PromptPresetEvent
 import sh.hnet.comfychair.viewmodel.PromptPresetViewModel
+import sh.hnet.comfychair.viewmodel.MediaViewerItem
+import sh.hnet.comfychair.ui.components.generate.WorkflowChip
+import sh.hnet.comfychair.ui.components.generate.RecentResultsStrip
+import sh.hnet.comfychair.ui.components.generate.ModeMenuButton
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -259,7 +263,13 @@ fun ImageToImageScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Top App Bar with image options
         TopAppBar(
-            title = { Text(stringResource(R.string.title_image_to_image)) },
+            title = {
+                WorkflowChip(
+                    workflows = if (uiState.mode == ImageToImageMode.EDITING) uiState.editingWorkflows.map { it.name } else uiState.availableWorkflows.map { it.name },
+                    selected = if (uiState.mode == ImageToImageMode.EDITING) uiState.selectedEditingWorkflow else uiState.selectedWorkflow,
+                    onSelect = { if (uiState.mode == ImageToImageMode.EDITING) imageToImageViewModel.onEditingWorkflowChange(it) else imageToImageViewModel.onWorkflowChange(it) }
+                )
+            },
             windowInsets = WindowInsets(0, 0, 0, 0),
             actions = {
                 // Upload image button
@@ -301,6 +311,7 @@ fun ImageToImageScreen(
                     }
                 }
                 // Menu button
+                ModeMenuButton()
                 AppMenuDropdown(
                     onSettings = onNavigateToSettings,
                     onLogout = onLogout
@@ -437,6 +448,24 @@ fun ImageToImageScreen(
         }
 
         val controlsContent: @Composable ColumnScope.() -> Unit = {
+        // Recent results + gallery button (replaces the old bottom bar)
+        if (!expandPrompt) {
+            RecentResultsStrip(
+                selectedKey = null,
+                onSelect = { item ->
+                    context.startActivity(
+                        MediaViewerActivity.createGalleryIntent(
+                            context = context,
+                            hostname = generationViewModel.getHostname(),
+                            port = generationViewModel.getPort(),
+                            items = listOf(MediaViewerItem(item.promptId, item.filename, item.subfolder, item.type, item.isVideo, item.index)),
+                            initialIndex = 0
+                        )
+                    )
+                },
+                modifier = Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)
+            )
+        }
         // Prompt Input — expands to fill screen above keyboard when focused
         OutlinedTextField(
             value = uiState.positivePrompt,
