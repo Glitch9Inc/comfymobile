@@ -432,20 +432,22 @@ fun TextToImageScreen(
         )
     }
 
+    // Always shown; greyed out until there is an image
     val imageActions: @Composable () -> Unit = {
-        if (uiState.previewBitmap != null) {
-            OverlayChip(stringResource(R.string.button_save)) {
+        val hasImage = uiState.previewBitmap != null
+        run {
+            OverlayChip(stringResource(R.string.button_save), enabled = hasImage) {
                 textToImageViewModel.saveToGallery { success ->
                     val messageRes = if (success) R.string.msg_image_saved_to_gallery else R.string.error_save_image
                     Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
                 }
             }
-            OverlayChip(stringResource(R.string.button_share)) {
+            OverlayChip(stringResource(R.string.button_share), enabled = hasImage) {
                 textToImageViewModel.getShareIntent()?.let { intent ->
                     context.startActivity(android.content.Intent.createChooser(intent, context.getString(R.string.share_image)))
                 }
             }
-            OverlayChip(stringResource(R.string.button_copy_settings)) { copySettings() }
+            OverlayChip(stringResource(R.string.button_copy_settings), enabled = hasImage) { copySettings() }
         }
     }
 
@@ -659,9 +661,7 @@ fun TextToImageScreen(
                                     contentScale = ContentScale.Fit
                                 )
                             }
-                            if (progressVisible) {
-                                ProgressPill(generationState.progress, generationState.maxProgress, Modifier.align(Alignment.TopStart).padding(10.dp))
-                            }
+                            ProgressPill(generationState.progress, generationState.maxProgress, Modifier.align(Alignment.TopStart).padding(10.dp), active = progressVisible)
                             Row(
                                 Modifier.align(Alignment.TopEnd).padding(10.dp),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -726,9 +726,7 @@ fun TextToImageScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 14.dp)
                         ) {
-                            if (progressVisible) {
-                                ProgressPill(generationState.progress, generationState.maxProgress, translucent = false)
-                            }
+                            ProgressPill(generationState.progress, generationState.maxProgress, translucent = false, active = progressVisible)
                             Spacer(Modifier.weight(1f))
                             imageActions()
                         }

@@ -238,21 +238,22 @@ fun WorkflowChip(
 
 /** Small translucent action chip drawn over the preview image. */
 @Composable
-fun OverlayChip(text: String, onClick: () -> Unit) {
+fun OverlayChip(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     Text(
         text,
-        fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color.White,
+        fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        color = Color.White.copy(alpha = if (enabled) 1f else .35f),
         modifier = Modifier
             .clip(RoundedCornerShape(10.dp))
             .background(Color(0xB8080A0C))
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp)
     )
 }
 
 /** "12/20" progress pill with a ring. */
 @Composable
-fun ProgressPill(progress: Int, max: Int, modifier: Modifier = Modifier, translucent: Boolean = true) {
+fun ProgressPill(progress: Int, max: Int, modifier: Modifier = Modifier, translucent: Boolean = true, active: Boolean = true) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -261,15 +262,16 @@ fun ProgressPill(progress: Int, max: Int, modifier: Modifier = Modifier, translu
             .padding(start = 5.dp, end = 12.dp, top = 5.dp, bottom = 5.dp)
     ) {
         CircularProgressIndicator(
-            progress = { if (max > 0) progress.toFloat() / max else 0f },
+            progress = { if (active && max > 0) progress.toFloat() / max else 0f },
             modifier = Modifier.size(22.dp),
-            color = Brand.Lime,
+            color = if (active) Brand.Lime else Color.Gray,
             trackColor = Color.White.copy(alpha = .15f),
             strokeWidth = 3.dp
         )
         Spacer(Modifier.width(8.dp))
         Text(
-            "$progress/$max", color = Color.White, fontFamily = FontFamily.Monospace,
+            if (active) "$progress/$max" else "–/–",
+            color = Color.White.copy(alpha = if (active) 1f else .35f), fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.SemiBold, fontSize = 12.sp
         )
     }
