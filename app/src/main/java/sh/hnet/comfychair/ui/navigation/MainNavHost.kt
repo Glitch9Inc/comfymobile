@@ -1,6 +1,9 @@
 package sh.hnet.comfychair.ui.navigation
 
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -40,10 +43,14 @@ fun MainNavHost(
 ) {
     Scaffold(
         bottomBar = {
-            MainNavigationBar(
-                navController = navController,
-                onNavigateToGallery = onNavigateToGallery
-            )
+            // Hide the mode bar while the soft keyboard is open
+            val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+            if (!imeVisible) {
+                MainNavigationBar(
+                    navController = navController,
+                    onNavigateToGallery = onNavigateToGallery
+                )
+            }
         },
         modifier = modifier.imePadding()
     ) { paddingValues ->
