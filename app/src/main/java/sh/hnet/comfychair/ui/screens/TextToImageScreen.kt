@@ -69,6 +69,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import sh.hnet.comfychair.MediaViewerActivity
 import sh.hnet.comfychair.R
+import sh.hnet.comfychair.ui.components.generate.ratioOf
+import sh.hnet.comfychair.ui.components.generate.FitAspectBox
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -606,6 +608,11 @@ fun TextToImageScreen(
         }
     }
 
+    // Preview card shape: the selected resolution (falls back to the shown image, then square)
+    val previewRatio = (if (caps.hasWidth && caps.hasHeight) ratioOf(uiState.width, uiState.height) else null)
+        ?: uiState.previewBitmap?.let { it.width.toFloat() / it.height }
+        ?: 1f
+
     val metaInfo = metaText(uiState.previewBitmap, if (uiState.randomSeed) null else uiState.seed, uiState.selectedWorkflow.ifEmpty { null })
 
     // ---------- Layout ----------
@@ -632,12 +639,14 @@ fun TextToImageScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     if (!expandPrompt) {
-                        // Preview with overlays
+                        // Preview with overlays; its shape follows the selected resolution
+                        FitAspectBox(
+                            ratio = previewRatio,
+                            modifier = Modifier.weight(1f).fillMaxWidth().heightIn(min = 120.dp)
+                        ) {
                         Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .heightIn(min = 120.dp)
+                                .fillMaxSize()
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(MaterialTheme.colorScheme.surfaceContainer)
                                 .clickable(enabled = uiState.previewBitmap != null && !isThisScreenExecuting) { openPreviewViewer() }
@@ -647,7 +656,7 @@ fun TextToImageScreen(
                                     bitmap = bmp.asImageBitmap(),
                                     contentDescription = stringResource(R.string.content_description_generated_image),
                                     modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
+                                    contentScale = ContentScale.Fit
                                 )
                             }
                             if (progressVisible) {
@@ -660,6 +669,7 @@ fun TextToImageScreen(
                             if (uiState.previewBitmap != null && metaInfo.isNotEmpty()) {
                                 MetaLine(metaInfo, Modifier.align(Alignment.BottomStart).padding(10.dp))
                             }
+                        }
                         }
 
                         RecentResultsStrip(
@@ -722,12 +732,10 @@ fun TextToImageScreen(
                             Spacer(Modifier.weight(1f))
                             imageActions()
                         }
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp)
+                        FitAspectBox(
+                            ratio = previewRatio,
+                            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp),
+                            boxModifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.background)
                                 .clickable(enabled = uiState.previewBitmap != null && !isThisScreenExecuting) { openPreviewViewer() }

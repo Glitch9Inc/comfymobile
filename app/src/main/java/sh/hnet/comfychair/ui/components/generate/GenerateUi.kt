@@ -553,3 +553,30 @@ fun metaText(bitmap: Bitmap?, seed: String?, extra: String? = null): String =
         seed?.takeIf { it.isNotBlank() }?.let { "seed $it" },
         extra
     ).joinToString(" · ")
+
+/**
+ * Centers a box with the given width/height ratio, as large as fits in the available space.
+ * Used so the preview card follows the selected resolution (2:3, 1:1, 3:2, ...).
+ */
+@Composable
+fun FitAspectBox(
+    ratio: Float,
+    modifier: Modifier = Modifier,
+    boxModifier: Modifier = Modifier,
+    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit
+) {
+    androidx.compose.foundation.layout.BoxWithConstraints(modifier, contentAlignment = Alignment.Center) {
+        val r = ratio.takeIf { it.isFinite() && it > 0f } ?: 1f
+        val w = maxWidth
+        val h = maxHeight
+        val (bw, bh) = if (w / h > r) (h * r) to h else w to (w / r)
+        Box(boxModifier.size(bw, bh), content = content)
+    }
+}
+
+/** Width/height ratio from text fields, or null if they aren't numbers. */
+fun ratioOf(width: String, height: String): Float? {
+    val w = width.toFloatOrNull() ?: return null
+    val h = height.toFloatOrNull() ?: return null
+    return if (w > 0 && h > 0) w / h else null
+}
