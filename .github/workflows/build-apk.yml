@@ -18,8 +18,22 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
+      - name: Prepare signing key
+        env:
+          DEV_KEYSTORE_BASE64: ${{ secrets.DEV_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$DEV_KEYSTORE_BASE64" ]; then
+            echo "$DEV_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/dev.jks"
+            echo "DEV_KEYSTORE_FILE=$RUNNER_TEMP/dev.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::DEV_KEYSTORE_BASE64 secret not set; using a throwaway debug key"
+          fi
       - name: Build dev APK (shrunk)
         shell: bash
+        env:
+          DEV_KEYSTORE_PASSWORD: ${{ secrets.DEV_KEYSTORE_PASSWORD }}
+          DEV_KEY_ALIAS: ${{ secrets.DEV_KEY_ALIAS }}
+          DEV_KEY_PASSWORD: ${{ secrets.DEV_KEY_PASSWORD }}
         run: |
           set -o pipefail
           ./gradlew --no-daemon assembleDev 2>&1 | tee build.log
