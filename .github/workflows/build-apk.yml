@@ -19,7 +19,10 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - name: Build dev APK (shrunk)
-        run: ./gradlew --no-daemon assembleDev
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon assembleDev 2>&1 | tee build.log
       - name: Rename APK
         run: cp app/build/outputs/apk/dev/*.apk comfymobile-dev.apk && ls -lh comfymobile-dev.apk
       - uses: actions/upload-artifact@v4
@@ -38,3 +41,12 @@ jobs:
             gh release create dev-latest --prerelease --title "Dev build (latest)" --notes "Latest test build from feature branches."
           gh release edit dev-latest --notes "Latest test build: ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}"
           gh release upload dev-latest comfymobile-dev.apk --clobber
+      # On failure, publish the compiler errors so they can be read without logging in
+      - name: Publish build errors
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          grep -E "^e: |error:|FAILURE|What went wrong" -A3 build.log | head -300 > build-errors.txt || true
+          gh release view dev-latest >/dev/null 2>&1 || gh release create dev-latest --prerelease --title "Dev build (latest)" --notes "Latest test build."
+          gh release upload dev-latest build-errors.txt --clobber
