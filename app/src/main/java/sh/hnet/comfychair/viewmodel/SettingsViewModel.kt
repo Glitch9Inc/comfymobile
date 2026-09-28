@@ -100,7 +100,7 @@ class SettingsViewModel : ViewModel() {
     private val _serverSettingsState = MutableStateFlow(ServerSettingsUiState())
     val serverSettingsState: StateFlow<ServerSettingsUiState> = _serverSettingsState.asStateFlow()
 
-    private val _isSaveToPhoneEnabled = MutableStateFlow(true)
+    private val _isSaveToPhoneEnabled = MutableStateFlow(false)
     val isSaveToPhoneEnabled: StateFlow<Boolean> = _isSaveToPhoneEnabled.asStateFlow()
 
     private val _isLivePreviewEnabled = MutableStateFlow(true)

@@ -214,11 +214,11 @@ object AppSettings {
 
     /**
      * Whether gallery outputs are also saved to the phone's Photos
-     * (Pictures/ComfyChair, Movies/ComfyChair). Default: true.
+     * (Pictures/ComfyMobile, Movies/ComfyMobile). Default: false (only kept inside the app).
      */
     fun isSaveToPhoneEnabled(context: Context): Boolean {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SAVE_TO_PHONE, true)
+            .getBoolean(KEY_SAVE_TO_PHONE, false)
     }
 
     fun setSaveToPhoneEnabled(context: Context, enabled: Boolean) {
