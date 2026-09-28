@@ -678,4 +678,5 @@
     <string name="msg_no_generation_info">No generation info found for this image</string>
     <string name="msg_settings_copied">Settings copied to the form</string>
     <string name="label_more">More</string>
+    <string name="label_optional">(optional)</string>
 </resources>

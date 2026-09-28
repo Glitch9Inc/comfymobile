@@ -647,4 +647,5 @@
     <string name="msg_no_generation_info">Keine Generierungsinfos für dieses Bild</string>
     <string name="msg_settings_copied">Einstellungen übernommen</string>
     <string name="label_more">Mehr</string>
+    <string name="label_optional">(optional)</string>
 </resources>

@@ -649,4 +649,5 @@
     <string name="msg_no_generation_info">此图片没有生成信息</string>
     <string name="msg_settings_copied">已复制设置</string>
     <string name="label_more">更多</string>
+    <string name="label_optional">（可选）</string>
 </resources>

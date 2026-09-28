@@ -103,25 +103,40 @@ fun PromptPresetDialog(
     val errorRequired = stringResource(R.string.error_required)
     val errorNameTaken = stringResource(R.string.error_prompt_preset_name_taken)
 
-    fun validate(): Boolean {
-        nameError = null
-        val trimmedName = name.trim()
-        if (trimmedName.isEmpty()) {
-            nameError = errorRequired
-            return false
-        }
-        // Use storage for validation when screen type selector is shown,
-        // otherwise use the passed isNameTaken function
-        val nameTaken = if (showScreenTypeSelector && storage != null) {
-            storage.isNameTaken(trimmedName, selectedScreenType, editingPreset?.id)
+    fun isTaken(n: String): Boolean =
+        if (showScreenTypeSelector && storage != null) {
+            storage.isNameTaken(n, selectedScreenType, editingPreset?.id)
         } else {
-            isNameTaken(trimmedName, editingPreset?.id)
+            isNameTaken(n, editingPreset?.id)
         }
-        if (nameTaken) {
-            nameError = errorNameTaken
-            return false
+
+    /**
+     * Name to save with. An empty name is allowed: it is filled from the first
+     * few words of the prompt (made unique with " 2", " 3", ...).
+     * Returns null when a typed name is already taken.
+     */
+    fun resolveName(): String? {
+        nameError = null
+        val typed = name.trim()
+        if (typed.isNotEmpty()) {
+            if (isTaken(typed)) {
+                nameError = errorNameTaken
+                return null
+            }
+            return typed
         }
-        return true
+        val base = prompt.split(',', '\n')
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .take(3)
+            .joinToString(", ")
+            .take(30)
+            .trim()
+            .ifEmpty { "Prompt" }
+        var candidate = base
+        var n = 2
+        while (isTaken(candidate)) candidate = "$base ${n++}"
+        return candidate
     }
 
     fun addTag(tag: String) {
@@ -196,7 +211,7 @@ fun PromptPresetDialog(
                         name = it
                         nameError = null
                     },
-                    label = { Text(stringResource(R.string.label_prompt_preset_name)) },
+                    label = { Text(stringResource(R.string.label_prompt_preset_name) + " " + stringResource(R.string.label_optional)) },
                     isError = nameError != null,
                     supportingText = nameError?.let { { Text(it) } },
                     singleLine = true,
@@ -297,11 +312,12 @@ fun PromptPresetDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (validate()) {
+                    val finalName = resolveName()
+                    if (finalName != null) {
                         if (showScreenTypeSelector && onSaveWithScreenType != null) {
-                            onSaveWithScreenType(name.trim(), prompt.trim(), tags, selectedScreenType)
+                            onSaveWithScreenType(finalName, prompt.trim(), tags, selectedScreenType)
                         } else {
-                            onSave(name.trim(), prompt.trim(), tags)
+                            onSave(finalName, prompt.trim(), tags)
                         }
                     }
                 }
