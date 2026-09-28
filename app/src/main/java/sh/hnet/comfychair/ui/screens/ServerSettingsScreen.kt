@@ -173,8 +173,8 @@ fun ServerSettingsScreen(
                     listOfNotNull(
                         stats.gpus.firstOrNull()?.name,
                         "ComfyUI ${stats.comfyuiVersion}",
-                        "PyTorch ${stats.pytorchVersion}",
-                        "Python ${stats.pythonVersion}"
+                        "PyTorch ${stats.pytorchVersion.substringBefore('+')}",
+                        "Python ${stats.pythonVersion.substringBefore(' ')}"
                     ).joinToString("  ·  "),
                     fontFamily = FontFamily.Monospace, fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
