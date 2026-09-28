@@ -679,4 +679,9 @@
     <string name="msg_settings_copied">Settings copied to the form</string>
     <string name="label_more">More</string>
     <string name="label_optional">(optional)</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_not_connected">Not connected</string>
+    <string name="button_change_server">Change server</string>
+    <string name="label_kept_on_device">Kept on this device</string>
+    <string name="desc_kept_on_device">%1$d items that stay even if removed from the server</string>
 </resources>

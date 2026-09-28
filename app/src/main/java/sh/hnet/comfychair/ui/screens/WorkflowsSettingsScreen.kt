@@ -5,6 +5,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -224,17 +226,32 @@ fun WorkflowsSettingsScreen(
                     modifier = Modifier.padding(vertical = 8.dp)
                 )
             } else {
-                sections.filter { it.second.isNotEmpty() }.forEach { (title, list) ->
-                    WorkflowSection(
-                        title = title,
-                        workflows = list,
-                        onWorkflowClick = { context.startActivity(WorkflowEditorActivity.createIntent(context, it.id)) },
-                        onEditStructure = { editExistingLauncher.launch(WorkflowEditorActivity.createIntentForEditingExisting(context, it.id)) },
-                        onRename = { viewModel.onEditWorkflow(it) },
-                        onDuplicate = { viewModel.onDuplicateWorkflow(it) },
-                        onExport = { workflow, format -> viewModel.onExportWorkflow(workflow, format) },
-                        onDelete = { viewModel.onDeleteWorkflow(it) }
-                    )
+                // One list; the type is shown as a badge on each row
+                val badges = listOf("T2I", "INP", "EDIT", "T2V", "I2V")
+                val rows = sections.flatMapIndexed { i, (_, list) -> list.map { badges[i] to it } }
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        rows.forEachIndexed { index, (badge, workflow) ->
+                            key(workflow.id) {
+                                WorkflowListItemContent(
+                                    workflow = workflow,
+                                    onClick = { context.startActivity(WorkflowEditorActivity.createIntent(context, workflow.id)) },
+                                    onEditStructure = { editExistingLauncher.launch(WorkflowEditorActivity.createIntentForEditingExisting(context, workflow.id)) },
+                                    onRename = { viewModel.onEditWorkflow(workflow) },
+                                    onDuplicate = { viewModel.onDuplicateWorkflow(workflow) },
+                                    onExport = { format -> viewModel.onExportWorkflow(workflow, format) },
+                                    onDelete = { viewModel.onDeleteWorkflow(workflow) },
+                                    badge = badge
+                                )
+                                if (index < rows.size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -547,7 +564,8 @@ private fun WorkflowListItemContent(
     onRename: () -> Unit,
     onDuplicate: () -> Unit,
     onExport: (ExportFormat) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    badge: String? = null
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
 
@@ -558,11 +576,30 @@ private fun WorkflowListItemContent(
             .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (badge != null) {
+            // Compact row: type badge instead of the graph thumbnail
+            val video = badge.endsWith("V")
+            Text(
+                badge,
+                fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold,
+                color = if (video) sh.hnet.comfychair.ui.components.generate.Brand.Lime else sh.hnet.comfychair.ui.components.generate.Brand.BlueText,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier
+                    .width(44.dp)
+                    .background(
+                        if (video) sh.hnet.comfychair.ui.components.generate.Brand.Lime.copy(alpha = .14f)
+                        else sh.hnet.comfychair.ui.components.generate.Brand.BlueSoft,
+                        androidx.compose.foundation.shape.RoundedCornerShape(7.dp)
+                    )
+                    .padding(vertical = 3.dp)
+            )
+        } else {
         // Workflow graph thumbnail
         WorkflowThumbnail(
             jsonContent = workflow.jsonContent,
             modifier = Modifier.size(48.dp)
         )
+        }
 
         Spacer(modifier = Modifier.width(12.dp))
 

@@ -52,6 +52,10 @@ import sh.hnet.comfychair.workflow.routing.RouterProvider
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.material3.CardDefaults
+import androidx.compose.foundation.border
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -632,15 +636,41 @@ fun ApplicationSettingsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Clear cache button
-                Button(
-                    onClick = { viewModel.clearCache(context) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
+                // Storage used: permanent copies (kept) and temporary cache (can be cleared)
+                var storageRefresh by remember { mutableStateOf(0) }
+                var storage by remember { mutableStateOf<StorageUsage?>(null) }
+                LaunchedEffect(storageRefresh) {
+                    if (storageRefresh > 0) kotlinx.coroutines.delay(800) // let the clear finish
+                    storage = withContext(Dispatchers.IO) { StorageUsage.measure(context) }
+                }
+                storage?.let { u ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.label_kept_on_device), style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                stringResource(R.string.desc_kept_on_device, u.keptCount),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(StorageUsage.format(u.keptBytes), style = MaterialTheme.typography.bodyMedium,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                // Clear cache button (shows how much will be freed)
+                OutlinedButton(
+                    onClick = {
+                        viewModel.clearCache(context)
+                        storageRefresh++
+                    },
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(stringResource(R.string.button_clear_cache))
+                    Text(
+                        stringResource(R.string.button_clear_cache) +
+                            (storage?.let { " · " + StorageUsage.format(it.cacheBytes) } ?: "")
+                    )
                 }
             }
         }
@@ -693,58 +723,6 @@ fun ApplicationSettingsScreen(
                     )
                 ) {
                     Text(stringResource(R.string.button_backup_restore))
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Reset Card
-        Card(
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.title_settings_reset),
-                    style = MaterialTheme.typography.titleMedium
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = stringResource(R.string.desc_settings_reset),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Reset prompts and library button
-                Button(
-                    onClick = { viewModel.resetPromptsAndLibrary(context) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text(stringResource(R.string.button_reset_prompts_and_library))
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Restore defaults button
-                Button(
-                    onClick = { viewModel.restoreDefaults(context) },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    )
-                ) {
-                    Text(stringResource(R.string.button_restore_defaults))
                 }
             }
         }
@@ -813,6 +791,63 @@ fun ApplicationSettingsScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Reset Card (irreversible actions, kept at the very bottom)
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, MaterialTheme.colorScheme.error.copy(alpha = .5f), CardDefaults.shape)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.title_settings_reset),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = stringResource(R.string.desc_settings_reset),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Reset prompts and library button
+                Button(
+                    onClick = { viewModel.resetPromptsAndLibrary(context) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.button_reset_prompts_and_library))
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Restore defaults button
+                Button(
+                    onClick = { viewModel.restoreDefaults(context) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.button_restore_defaults))
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         // Bottom padding
         Spacer(modifier = Modifier.height(16.dp))
     }
@@ -826,5 +861,25 @@ fun ApplicationSettingsScreen(
                 logSaveLauncher.launch("comfychair_log_$timestamp.txt")
             }
         )
+    }
+}
+
+/** Sizes shown in the cache section. */
+private data class StorageUsage(val keptBytes: Long, val keptCount: Int, val cacheBytes: Long) {
+    companion object {
+        fun measure(context: android.content.Context): StorageUsage {
+            val kept = java.io.File(context.filesDir, "local_gallery")
+            val keptFiles = kept.walkTopDown().filter { it.isFile }.toList()
+            val media = keptFiles.filter { it.parentFile?.name != "records" && !it.name.endsWith(".json") && !it.name.endsWith(".tmp") }
+            val cacheBytes = context.cacheDir.walkTopDown().filter { it.isFile }.sumOf { it.length() } +
+                (context.filesDir.listFiles()?.filter { it.isFile && it.name.matches(Regex("[a-f0-9-]{36}_.*\\.(png|mp4)")) }?.sumOf { it.length() } ?: 0L)
+            return StorageUsage(keptFiles.sumOf { it.length() }, media.size, cacheBytes)
+        }
+
+        fun format(bytes: Long): String = when {
+            bytes >= 1L shl 30 -> "%.1f GB".format(bytes / (1L shl 30).toDouble())
+            bytes >= 1L shl 20 -> "%.0f MB".format(bytes / (1L shl 20).toDouble())
+            else -> "%.0f KB".format(bytes / 1024.0)
+        }
     }
 }

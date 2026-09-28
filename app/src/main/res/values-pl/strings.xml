@@ -650,4 +650,9 @@
     <string name="msg_settings_copied">Ustawienia skopiowane</string>
     <string name="label_more">Więcej</string>
     <string name="label_optional">(opcjonalnie)</string>
+    <string name="status_connected">Połączono</string>
+    <string name="status_not_connected">Brak połączenia</string>
+    <string name="button_change_server">Zmień serwer</string>
+    <string name="label_kept_on_device">Zapisane na urządzeniu</string>
+    <string name="desc_kept_on_device">%1$d elementów, które zostają nawet po usunięciu z serwera</string>
 </resources>
