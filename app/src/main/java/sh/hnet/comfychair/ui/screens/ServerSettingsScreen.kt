@@ -58,12 +58,13 @@ fun ServerSettingsScreen(
         }
     }
 
-    // Event handling
+    // Event handling (on the one-page settings screen, the application section shows toasts)
+    val embedded = sh.hnet.comfychair.ui.components.LocalSettingsEmbedded.current
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is SettingsEvent.ShowToast -> {
-                    Toast.makeText(context, event.messageResId, Toast.LENGTH_SHORT).show()
+                    if (!embedded) Toast.makeText(context, event.messageResId, Toast.LENGTH_SHORT).show()
                 }
                 is SettingsEvent.RefreshNeeded -> {
                     // Handled by SettingsContainerActivity

@@ -67,6 +67,8 @@ import androidx.compose.ui.text.font.FontWeight
 import sh.hnet.comfychair.ui.components.WorkflowThumbnail
 import androidx.compose.ui.unit.dp
 import sh.hnet.comfychair.R
+import sh.hnet.comfychair.ui.components.SettingsSectionHeader
+import sh.hnet.comfychair.ui.components.LocalSettingsEmbedded
 import sh.hnet.comfychair.ui.components.SettingsMenuDropdown
 import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.WorkflowManager
@@ -185,6 +187,58 @@ fun WorkflowsSettingsScreen(
         }
     }
 
+    val embedded = LocalSettingsEmbedded.current
+    if (embedded) {
+        val sections = listOf(
+            stringResource(R.string.workflow_section_tti) to uiState.ttiWorkflows,
+            stringResource(R.string.workflow_section_iti_inpainting) to uiState.itiInpaintingWorkflows,
+            stringResource(R.string.workflow_section_iti_editing) to uiState.itiEditingWorkflows,
+            stringResource(R.string.workflow_section_ttv) to uiState.ttvWorkflows,
+            stringResource(R.string.workflow_section_itv) to uiState.itvWorkflows
+        )
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            SettingsSectionHeader(stringResource(R.string.title_workflows_settings))
+            // Import / create actions (shown as buttons, since there is no app bar here)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { viewModel.openServerWorkflows() }) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.button_import_from_comfyui))
+                }
+                OutlinedButton(onClick = { jsonPickerLauncher.launch("application/json") }) {
+                    Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.button_import), modifier = Modifier.size(18.dp))
+                }
+                OutlinedButton(onClick = {
+                    createEditorLauncher.launch(WorkflowEditorActivity.createIntentForNewWorkflow(context))
+                }) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.button_new_workflow), modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (uiState.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+            } else if (sections.all { it.second.isEmpty() }) {
+                Text(
+                    stringResource(R.string.workflow_section_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                sections.filter { it.second.isNotEmpty() }.forEach { (title, list) ->
+                    WorkflowSection(
+                        title = title,
+                        workflows = list,
+                        onWorkflowClick = { context.startActivity(WorkflowEditorActivity.createIntent(context, it.id)) },
+                        onEditStructure = { editExistingLauncher.launch(WorkflowEditorActivity.createIntentForEditingExisting(context, it.id)) },
+                        onRename = { viewModel.onEditWorkflow(it) },
+                        onDuplicate = { viewModel.onDuplicateWorkflow(it) },
+                        onExport = { workflow, format -> viewModel.onExportWorkflow(workflow, format) },
+                        onDelete = { viewModel.onDeleteWorkflow(it) }
+                    )
+                }
+            }
+        }
+    } else
     Column(modifier = Modifier.fillMaxSize()) {
         // Top App Bar
         TopAppBar(
