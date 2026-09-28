@@ -101,6 +101,15 @@ import sh.hnet.comfychair.viewmodel.GalleryItem
 import sh.hnet.comfychair.viewmodel.GalleryViewModel
 import sh.hnet.comfychair.viewmodel.GenerationViewModel
 import sh.hnet.comfychair.viewmodel.MediaViewerItem
+import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
+import sh.hnet.comfychair.ui.components.rememberGalleryThumbnail
+import sh.hnet.comfychair.ui.components.GalleryThumbnailCache
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.GridCells
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -197,8 +206,13 @@ fun GalleryScreen(
     }
 
     // Grid state for scroll tracking
-    val gridState = rememberLazyStaggeredGridState()
+    // Regular grid for the square/single modes (stable layout), staggered only for masonry
+    val gridState = rememberLazyGridState()
+    val staggeredState = rememberLazyStaggeredGridState()
     val viewMode = uiState.viewMode
+    val isMasonry = viewMode == GalleryViewMode.MASONRY
+    val firstVisibleIndex = if (isMasonry) staggeredState.firstVisibleItemIndex else gridState.firstVisibleItemIndex
+    val visibleCount = if (isMasonry) staggeredState.layoutInfo.visibleItemsInfo.size else gridState.layoutInfo.visibleItemsInfo.size
     val columns = viewMode.columns
     val spacing = if (columns >= 3) 4.dp else 8.dp
 
@@ -222,17 +236,22 @@ fun GalleryScreen(
 
     // Track scroll position and update cache priorities with debounce
     // Only update when Gallery is the active view (not when MediaViewer is animating closed)
-    LaunchedEffect(gridState.firstVisibleItemIndex, gridState.layoutInfo.visibleItemsInfo.size) {
+    LaunchedEffect(firstVisibleIndex, visibleCount) {
         if (prefetchItems.isNotEmpty() && MediaCache.isActiveView(ActiveView.GALLERY)) {
             // Debounce scroll updates to avoid excessive calls during fast scrolling
             kotlinx.coroutines.delay(100)
             MediaCache.updateGalleryPosition(
-                firstVisibleIndex = gridState.firstVisibleItemIndex,
-                visibleItemCount = gridState.layoutInfo.visibleItemsInfo.size,
+                firstVisibleIndex = firstVisibleIndex,
+                visibleItemCount = visibleCount,
                 allItems = prefetchItems,
                 columnsInGrid = columns
             )
         }
+    }
+
+    // Start at the top when switching album or view mode
+    LaunchedEffect(uiState.selectedAlbumId, viewMode) {
+        if (isMasonry) staggeredState.scrollToItem(0) else gridState.scrollToItem(0)
     }
 
     // Prefetch when items become available or change (e.g., after manual refresh)
@@ -243,7 +262,7 @@ fun GalleryScreen(
     LaunchedEffect(itemsKey) {
         if (uiState.items.isNotEmpty()) {
             // Base prefetch on current scroll position instead of always starting from 0
-            val startIndex = gridState.firstVisibleItemIndex.coerceAtLeast(0)
+            val startIndex = firstVisibleIndex.coerceAtLeast(0).coerceAtMost(uiState.items.size)
             val endIndex = (startIndex + 24).coerceAtMost(uiState.items.size)
             val initialItems = uiState.items.subList(startIndex, endIndex).map { item ->
                 MediaCache.PrefetchItem(
@@ -384,9 +403,10 @@ fun GalleryScreen(
         ) {
             // Always use LazyVerticalGrid for consistent nested scroll behavior with pull-to-refresh
             NoOverscrollContainer(modifier = Modifier.fillMaxSize()) {
+                if (isMasonry) {
                 LazyVerticalStaggeredGrid(
                     columns = StaggeredGridCells.Fixed(columns),
-                    state = gridState,
+                    state = staggeredState,
                     contentPadding = PaddingValues(spacing),
                     horizontalArrangement = Arrangement.spacedBy(spacing),
                     verticalItemSpacing = spacing,
@@ -433,26 +453,91 @@ fun GalleryScreen(
                 } else {
                     // Gallery items
                     itemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { index, item ->
+                        val key = "${item.promptId}_${item.filename}"
                         GalleryItemCard(
                             item = item,
-                            isSelected = galleryViewModel.isItemSelected(item),
+                            isSelected = key in uiState.selectedItems,
                             isOfflineMode = isOfflineMode,
                             square = viewMode.square,
                             onTap = {
                                 if (uiState.isSelectionMode) {
-                                    // In selection mode, tap toggles selection
                                     galleryViewModel.toggleSelection(item)
                                 } else {
-                                    // Normal mode, tap opens MediaViewer
                                     launchMediaViewer(index)
                                 }
                             },
-                            onLongPress = {
-                                // Long press enters selection mode and selects this item
-                                galleryViewModel.toggleSelection(item)
-                            }
+                            onLongPress = { galleryViewModel.toggleSelection(item) }
                         )
                     }
+                }
+                }
+                } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    state = gridState,
+                    contentPadding = PaddingValues(spacing),
+                    horizontalArrangement = Arrangement.spacedBy(spacing),
+                    verticalArrangement = Arrangement.spacedBy(spacing),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                if (uiState.isLoading && uiState.items.isEmpty()) {
+                    // Loading state - show as full-span item
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                } else if (uiState.items.isEmpty()) {
+                    // Empty state - show as full-span item
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Default.Image,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(64.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                )
+                                Text(
+                                    text = stringResource(
+                                        if (selectedAlbum != null) R.string.msg_album_empty else R.string.msg_gallery_empty
+                                    ),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Gallery items
+                    gridItemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { index, item ->
+                        val key = "${item.promptId}_${item.filename}"
+                        GalleryItemCard(
+                            item = item,
+                            isSelected = key in uiState.selectedItems,
+                            isOfflineMode = isOfflineMode,
+                            square = viewMode.square,
+                            onTap = {
+                                if (uiState.isSelectionMode) {
+                                    galleryViewModel.toggleSelection(item)
+                                } else {
+                                    launchMediaViewer(index)
+                                }
+                            },
+                            onLongPress = { galleryViewModel.toggleSelection(item) }
+                        )
+                    }
+                }
                 }
                 }
             }
@@ -627,6 +712,7 @@ private fun AddToAlbumDialog(
  * Gallery item card with lazy bitmap loading.
  * Bitmaps are loaded from MediaCache on-demand.
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun GalleryItemCard(
     item: GalleryItem,
@@ -637,18 +723,16 @@ private fun GalleryItemCard(
     onLongPress: () -> Unit
 ) {
     // Create cache key directly from item's stable properties
+    val context = LocalContext.current
     val cacheKey = item.toCacheKey()
-    val (bitmap, isLoading) = rememberLazyBitmap(
-        cacheKey = cacheKey,
-        isVideo = item.isVideo,
-        subfolder = item.subfolder,
-        type = item.type
-    )
+    val (bitmap, isLoading) = rememberGalleryThumbnail(item, context)
 
-    // Square crop, or the media's original aspect ratio once loaded
-    val aspect = if (square) 1f else bitmap?.let { bmp ->
-        if (bmp.height > 0) (bmp.width.toFloat() / bmp.height).coerceIn(0.3f, 3f) else 1f
-    } ?: 1f
+    // Square crop, or the media's original aspect ratio (remembered once known)
+    val aspect = if (square) 1f else (
+        bitmap?.let { if (it.height > 0) it.width.toFloat() / it.height else null }
+            ?: GalleryThumbnailCache.aspectRatio(cacheKey.keyString)
+            ?: 1f
+        ).coerceIn(0.3f, 3f)
 
     Card(
         modifier = Modifier
@@ -665,19 +749,15 @@ private fun GalleryItemCard(
                     Modifier
                 }
             )
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { onTap() },
-                    onLongPress = { onLongPress() }
-                )
-            }
+            .clip(MaterialTheme.shapes.medium)
+            .combinedClickable(onClick = onTap, onLongClick = onLongPress)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Thumbnail from cache
             when {
                 bitmap != null -> {
                     Image(
-                        bitmap = bitmap!!.asImageBitmap(),
+                        bitmap = bitmap.asImageBitmap(),
                         contentDescription = if (item.isVideo) {
                             stringResource(R.string.content_description_gallery_video_thumbnail)
                         } else {

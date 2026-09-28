@@ -133,7 +133,9 @@ class GalleryViewModel : ViewModel() {
                 _selectedItems,
                 _isSelectionMode,
                 _viewState
-            ) { (items, isLoading, isManualRefreshing), selectedItems, isSelectionMode, view ->
+            ) { (rawItems, isLoading, isManualRefreshing), selectedItems, isSelectionMode, view ->
+                // Grid keys must be unique
+                val items = rawItems.distinctBy { getItemKey(it) }
                 val album = view.albums.firstOrNull { it.id == view.selectedAlbumId }
                 // "All" shows only items not yet sorted into any album
                 val inAnyAlbum = view.albums.flatMapTo(HashSet()) { it.members }
