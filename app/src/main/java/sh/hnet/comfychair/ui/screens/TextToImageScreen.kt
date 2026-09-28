@@ -514,7 +514,7 @@ fun TextToImageScreen(
         if (presetUiState.favorites.isNotEmpty() || uiState.positivePrompt.isNotBlank()) {
             ChipRow {
                 presetUiState.favorites.forEach { preset ->
-                    PillChip(preset.name, onClick = { presetViewModel.onPresetSelected(preset) }, leading = "★")
+                    PillChip(preset.name, onClick = { presetViewModel.onPresetSelected(preset.id) }, leading = "★")
                 }
                 if (uiState.positivePrompt.isNotBlank()) {
                     PillChip("+ " + stringResource(R.string.button_save), onClick = {
