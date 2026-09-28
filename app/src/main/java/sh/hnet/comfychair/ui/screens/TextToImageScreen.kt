@@ -594,6 +594,13 @@ fun TextToImageScreen(
             if (caps.hasBatchSize) {
                 BatchTile(uiState.batchSize, textToImageViewModel::onBatchSizeChange, Modifier.fillMaxHeight())
             }
+            // All workflow settings (models, LoRA, sampler, ...) in the options sheet
+            OutlinedIconButton(
+                onClick = { showOptionsBottomSheet = true },
+                modifier = Modifier.size(56.dp)
+            ) {
+                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.button_options))
+            }
         }
     }
 
