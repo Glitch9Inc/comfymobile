@@ -432,14 +432,18 @@ class MediaViewerViewModel : ViewModel() {
                 else -> null
             }
 
-            if (bytes == null) return@withContext null
+            // Saved generation record (survives ComfyUI restarts)
+            val savedRecord = LocalGalleryStore.loadGenerationRecord(
+                context, ConnectionManager.currentServerId, item.promptId
+            )
 
-            // Extract metadata based on file type
-            val jsonString = if (item.isVideo) {
-                Mp4MetadataExtractor.extractPromptMetadata(bytes)
-            } else {
-                PngMetadataExtractor.extractPromptMetadata(bytes)
-            }
+            if (bytes == null && savedRecord == null) return@withContext null
+
+            // Extract metadata based on file type, falling back to the saved record
+            val jsonString = bytes?.let {
+                if (item.isVideo) Mp4MetadataExtractor.extractPromptMetadata(it)
+                else PngMetadataExtractor.extractPromptMetadata(it)
+            } ?: savedRecord
 
             // Parse the workflow JSON
             jsonString?.let { MetadataParser.parseWorkflowJson(it) }

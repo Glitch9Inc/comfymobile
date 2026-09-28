@@ -237,6 +237,7 @@ class GalleryRepository private constructor() {
             // Merge with items kept on the device (survive server-side deletion)
             if (context != null && serverId != null) {
                 items = withContext(Dispatchers.IO) {
+                    LocalGalleryStore.saveGenerationRecords(context, serverId, historyJson)
                     LocalGalleryStore.mergeWithServer(context, serverId, items)
                 }
             }

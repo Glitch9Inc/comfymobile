@@ -220,6 +220,36 @@ object LocalGalleryStore {
         }
     }
 
+    // Generation records (the prompt/graph used), kept per promptId so the
+    // generation info survives a ComfyUI restart even if the file has no metadata.
+
+    private fun recordFile(context: Context, serverId: String, promptId: String): File =
+        File(File(serverDir(context, serverId), "records").apply { mkdirs() }, "${safeName(promptId)}.json")
+
+    /** Save the prompt graph of every history entry not saved yet. */
+    fun saveGenerationRecords(context: Context, serverId: String, historyJson: JSONObject) {
+        for (promptId in historyJson.keys()) {
+            try {
+                val file = recordFile(context, serverId, promptId)
+                if (file.exists()) continue
+                // History entry: { "prompt": [number, prompt_id, {graph}, extra_data, outputs], ... }
+                val graph = historyJson.optJSONObject(promptId)
+                    ?.optJSONArray("prompt")
+                    ?.optJSONObject(2) ?: continue
+                file.writeText(graph.toString())
+            } catch (e: Exception) {
+                DebugLogger.w(TAG, "Failed to save generation record: ${e.message}")
+            }
+        }
+    }
+
+    /** The saved prompt graph (API format JSON) for a prompt, or null. */
+    fun loadGenerationRecord(context: Context, serverId: String?, promptId: String): String? {
+        if (serverId == null) return null
+        val file = recordFile(context, serverId, promptId)
+        return if (file.exists()) try { file.readText() } catch (_: Exception) { null } else null
+    }
+
     /** Remove items from the device copy (the phone Photos copy is left alone). */
     fun remove(context: Context, serverId: String?, promptIds: Set<String>) {
         if (serverId == null) return
@@ -231,6 +261,7 @@ object LocalGalleryStore {
                 File(serverDir(context, serverId), safeName(k)).delete()
                 idx.remove(k)
             }
+            promptIds.forEach { recordFile(context, serverId, it).delete() }
             persist(context, serverId)
         }
     }
