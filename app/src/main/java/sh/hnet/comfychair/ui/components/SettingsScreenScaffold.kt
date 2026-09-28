@@ -43,7 +43,7 @@ fun SettingsScreenScaffold(
     // no app bar, no own scroll, just a section header and the content.
     if (LocalSettingsEmbedded.current) {
         Column(modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding)) {
-            SettingsSectionHeader(title)
+            SettingsSectionHeader(title, Modifier.padding(start = if (horizontalPadding < 16.dp) 16.dp - horizontalPadding else 0.dp))
             content()
         }
         return
@@ -77,13 +77,13 @@ val LocalSettingsEmbedded = androidx.compose.runtime.staticCompositionLocalOf { 
 
 /** Section header used on the one-page settings screen. */
 @Composable
-fun SettingsSectionHeader(title: String) {
+fun SettingsSectionHeader(title: String, modifier: Modifier = Modifier) {
     Text(
         text = title.uppercase(),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
         letterSpacing = androidx.compose.ui.unit.TextUnit(1.2f, androidx.compose.ui.unit.TextUnitType.Sp),
-        modifier = Modifier.padding(top = 28.dp, bottom = 8.dp)
+        modifier = modifier.padding(top = 20.dp, bottom = 8.dp)
     )
 }

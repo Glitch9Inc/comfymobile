@@ -198,8 +198,6 @@ fun ApplicationSettingsScreen(
         onNavigateToGeneration = onNavigateToGeneration,
         onLogout = onLogout
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
         // Language Card
         Card(
             modifier = Modifier.fillMaxWidth()

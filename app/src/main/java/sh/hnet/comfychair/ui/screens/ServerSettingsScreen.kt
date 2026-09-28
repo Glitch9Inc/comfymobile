@@ -103,7 +103,6 @@ fun ServerSettingsScreen(
         onNavigateToGeneration = onNavigateToGeneration,
         onLogout = onLogout
     ) {
-        Spacer(modifier = Modifier.height(8.dp))
         val serverName = remember(uiState.hostname) {
             ConnectionManager.currentServerId?.let { ServerStorage(context).getServer(it)?.name }
         }

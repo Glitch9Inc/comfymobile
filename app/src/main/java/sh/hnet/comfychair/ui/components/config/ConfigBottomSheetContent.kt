@@ -65,7 +65,7 @@ fun ConfigBottomSheetContent(
             // 1. Negative Prompt (at top)
             if (config.prompts.hasNegativePrompt) {
                 NegativePromptSection(config.prompts, spellCheckEnabled)
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             // 2. ITI Reference Images (if applicable)
@@ -81,7 +81,7 @@ fun ConfigBottomSheetContent(
 
             // 4. Workflow Dropdown
             WorkflowSection(config.workflow)
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // 5. Model Selection Section
             ModelSelectionSection(config.models)

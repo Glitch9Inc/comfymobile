@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -68,6 +69,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import sh.hnet.comfychair.MediaViewerActivity
 import sh.hnet.comfychair.R
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.runtime.saveable.rememberSaveable
 import sh.hnet.comfychair.ui.components.shared.ResolutionPresetRow
 import sh.hnet.comfychair.WorkflowEditorActivity
 import sh.hnet.comfychair.connection.ConnectionManager
@@ -320,6 +324,9 @@ fun TextToImageScreen(
     // Which recent result is shown in the preview (null = latest generation)
     var selectedRecent by remember { mutableStateOf<GalleryItem?>(null) }
 
+    // Wide layout: settings card collapsed by default
+    var settingsExpanded by rememberSaveable { mutableStateOf(false) }
+
     // Small edit dialogs for the parameter tiles
     var editParam by remember { mutableStateOf<String?>(null) }
 
@@ -511,15 +518,10 @@ fun TextToImageScreen(
     }
 
     val favoritesRow: @Composable () -> Unit = {
-        if (presetUiState.favorites.isNotEmpty() || uiState.positivePrompt.isNotBlank()) {
+        if (presetUiState.favorites.isNotEmpty()) {
             ChipRow {
                 presetUiState.favorites.forEach { preset ->
                     PillChip(preset.name, onClick = { presetViewModel.onPresetSelected(preset.id) }, leading = "★")
-                }
-                if (uiState.positivePrompt.isNotBlank()) {
-                    PillChip("+ " + stringResource(R.string.button_save), onClick = {
-                        presetViewModel.showSaveDialog(uiState.positivePrompt)
-                    }, dashed = true)
                 }
             }
         }
@@ -766,13 +768,46 @@ fun TextToImageScreen(
                             favoritesRow()
                         }
                     }
-                    GenCard(Modifier.fillMaxWidth().weight(1f)) {
-                        Box(Modifier.padding(top = 4.dp)) {
-                            ConfigBottomSheetContent(
-                                config = bottomSheetConfig,
-                                workflowName = uiState.selectedWorkflow,
-                                spellCheckEnabled = spellCheckEnabled
-                            )
+                    // All settings (negative prompt, models, LoRA, ...) — collapsed by default
+                    GenCard(Modifier.fillMaxWidth().then(if (settingsExpanded) Modifier.weight(1f) else Modifier)) {
+                        Column(if (settingsExpanded) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { settingsExpanded = !settingsExpanded }
+                                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                            ) {
+                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.button_options), fontWeight = FontWeight.Bold)
+                                Spacer(Modifier.width(10.dp))
+                                Text(
+                                    listOf(
+                                        uiState.selectedCheckpoint.ifEmpty { uiState.selectedUnet }
+                                            .substringAfterLast('/').substringBeforeLast('.'),
+                                        if (caps.hasSteps) "${uiState.steps} steps" else "",
+                                        if (caps.hasCfg) "CFG ${uiState.cfg}" else "",
+                                        if (uiState.loraChain.isNotEmpty()) "LoRA ${uiState.loraChain.size}" else ""
+                                    ).filter { it.isNotBlank() }.joinToString(" · "),
+                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    if (settingsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = null
+                                )
+                            }
+                            if (settingsExpanded) {
+                                Box(Modifier.weight(1f)) {
+                                    ConfigBottomSheetContent(
+                                        config = bottomSheetConfig,
+                                        workflowName = uiState.selectedWorkflow,
+                                        spellCheckEnabled = spellCheckEnabled
+                                    )
+                                }
+                            }
                         }
                     }
                     ratioRow()
@@ -800,7 +835,7 @@ fun TextToImageScreen(
         ModalBottomSheet(
             onDismissRequest = { showOptionsBottomSheet = false },
             sheetState = optionsSheetState,
-            contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+            contentWindowInsets = { WindowInsets.safeDrawing }
         ) {
             ConfigBottomSheetContent(
                 config = bottomSheetConfig,
