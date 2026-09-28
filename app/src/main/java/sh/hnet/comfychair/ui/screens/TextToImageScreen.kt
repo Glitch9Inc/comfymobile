@@ -211,7 +211,7 @@ fun TextToImageScreen(
     var prevImeHeight by remember { mutableStateOf(imeHeight) }
     SideEffect { prevImeHeight = imeHeight }
     var promptFocused by remember { mutableStateOf(false) }
-    val expandPrompt = promptExpandEnabled && promptFocused && imeHeight > 0 && imeHeight >= prevImeHeight
+    val expandPrompt = promptFocused && imeHeight > 0 && imeHeight >= prevImeHeight
 
     // Fetch models when connected
     LaunchedEffect(connectionStatus) {
@@ -327,7 +327,6 @@ fun TextToImageScreen(
     var selectedRecent by remember { mutableStateOf<GalleryItem?>(null) }
 
     // Wide layout: settings card collapsed by default
-    var settingsExpanded by rememberSaveable { mutableStateOf(false) }
 
     // Small edit dialogs for the parameter tiles
     var editParam by remember { mutableStateOf<String?>(null) }
@@ -768,55 +767,19 @@ fun TextToImageScreen(
                         workflowChip(Modifier.weight(1f))
                         serverMenu()
                     }
-                    GenCard(Modifier.fillMaxWidth().weight(0.9f)) {
+                    GenCard(Modifier.fillMaxWidth().weight(1f)) {
                         Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp)) {
                             promptField(Modifier.fillMaxWidth().weight(1f), true)
-                            favoritesRow()
+                            negativeLine()
                         }
                     }
-                    // All settings (negative prompt, models, LoRA, ...) — collapsed by default
-                    GenCard(Modifier.fillMaxWidth().then(if (settingsExpanded) Modifier.weight(1f) else Modifier)) {
-                        Column(if (settingsExpanded) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { settingsExpanded = !settingsExpanded }
-                                    .padding(horizontal = 14.dp, vertical = 12.dp)
-                            ) {
-                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text(stringResource(R.string.button_options), fontWeight = FontWeight.Bold)
-                                Spacer(Modifier.width(10.dp))
-                                Text(
-                                    listOf(
-                                        uiState.selectedCheckpoint.ifEmpty { uiState.selectedUnet }
-                                            .substringAfterLast('/').substringBeforeLast('.'),
-                                        if (caps.hasSteps) "${uiState.steps} steps" else "",
-                                        if (caps.hasCfg) "CFG ${uiState.cfg}" else "",
-                                        if (uiState.loraChain.isNotEmpty()) "LoRA ${uiState.loraChain.size}" else ""
-                                    ).filter { it.isNotBlank() }.joinToString(" · "),
-                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Icon(
-                                    if (settingsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                    contentDescription = null
-                                )
-                            }
-                            if (settingsExpanded) {
-                                Box(Modifier.weight(1f)) {
-                                    ConfigBottomSheetContent(
-                                        config = bottomSheetConfig,
-                                        workflowName = uiState.selectedWorkflow,
-                                        spellCheckEnabled = spellCheckEnabled
-                                    )
-                                }
-                            }
-                        }
+                    // While typing, keep only the prompt + generate so the keyboard never hides the field
+                    if (!expandPrompt) {
+                        favoritesRow()
+                        ratioRow()
+                        paramsRow()
+                        loraRow()
                     }
-                    ratioRow()
                     generateRow()
                 }
             }

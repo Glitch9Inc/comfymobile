@@ -450,30 +450,6 @@ fun ApplicationSettingsScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Prompt expand toggle
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.label_prompt_expand),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        Text(
-                            text = stringResource(R.string.desc_prompt_expand),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = isPromptExpandEnabled,
-                        onCheckedChange = { viewModel.setPromptExpandEnabled(context, it) }
-                    )
-                }
 
             }
         }

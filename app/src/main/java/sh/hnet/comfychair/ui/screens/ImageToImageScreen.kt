@@ -176,7 +176,7 @@ fun ImageToImageScreen(
     var prevImeHeight by remember { mutableStateOf(imeHeight) }
     SideEffect { prevImeHeight = imeHeight }
     var promptFocused by remember { mutableStateOf(false) }
-    val expandPrompt = promptExpandEnabled && promptFocused && imeHeight > 0 && imeHeight >= prevImeHeight
+    val expandPrompt = promptFocused && imeHeight > 0 && imeHeight >= prevImeHeight
 
     var showOptionsSheet by remember { mutableStateOf(false) }
 
