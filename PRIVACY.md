@@ -1,16 +1,16 @@
 # Privacy Policy
 
 **Effective Date**: December 28, 2025
-**App**: ComfyChair
-**Developer**: Legal HKr
+**App**: ComfyMobile
+**Developer**: Glitch9 Inc.
 
 ## Overview
 
-ComfyChair is an open-source Android application that provides a mobile interface for ComfyUI servers. This privacy policy explains how the app handles your data.
+ComfyMobile is an open-source Android application that provides a mobile interface for ComfyUI servers. This privacy policy explains how the app handles your data.
 
 ## Data Collection
 
-**ComfyChair does not collect, store, or transmit any personal information to the developer or any third parties.**
+**ComfyMobile does not collect, store, or transmit any personal information to the developer or any third parties.**
 
 ### Data Stored Locally on Your Device
 
@@ -26,18 +26,18 @@ All of this data remains on your device and is never transmitted to the develope
 
 ### Data Sent to Your ComfyUI Server
 
-When you use ComfyChair, the app communicates directly with your configured ComfyUI server. The following data is sent to your server:
+When you use ComfyMobile, the app communicates directly with your configured ComfyUI server. The following data is sent to your server:
 
 - Text prompts for image/video generation
 - Generation parameters (dimensions, steps, seed, etc.)
 - Source images for image-to-image or image-to-video generation
 - Workflow configurations
 
-**This data is sent only to the server you configure.** ComfyChair does not route your data through any intermediary servers.
+**This data is sent only to the server you configure.** ComfyMobile does not route your data through any intermediary servers.
 
 ## Third-Party Services
 
-ComfyChair does not integrate any third-party services such as:
+ComfyMobile does not integrate any third-party services such as:
 
 - Analytics or tracking services
 - Advertising networks
@@ -56,7 +56,7 @@ If you use Android's backup feature, your app settings may be included in device
 
 ## Children's Privacy
 
-ComfyChair does not knowingly collect any information from children under 13 years of age.
+ComfyMobile does not knowingly collect any information from children under 13 years of age.
 
 ## Changes to This Policy
 
@@ -65,9 +65,9 @@ We may update this privacy policy from time to time. Any changes will be reflect
 ## Contact
 
 If you have questions about this privacy policy, please open an issue at:
-https://github.com/legal-hkr/comfychair/issues
+https://github.com/Glitch9Inc/comfymobile/issues
 
 ## Open Source
 
-ComfyChair is open-source software licensed under GPL-3.0. You can review the complete source code at:
-https://github.com/legal-hkr/comfychair
+ComfyMobile is open-source software licensed under GPL-3.0. You can review the complete source code at:
+https://github.com/Glitch9Inc/comfymobile

@@ -1,4 +1,4 @@
-# <img src="metadata/en-US/icon.png" width="42"/> ComfyChair
+# <img src="metadata/en-US/icon.png" width="42"/> ComfyMobile
 
 An unofficial, native Android UI for [ComfyUI](https://github.com/comfyanonymous/ComfyUI).
 
@@ -6,16 +6,15 @@ An unofficial, native Android UI for [ComfyUI](https://github.com/comfyanonymous
 
 [<img src="https://raw.githubusercontent.com/rubenpgrady/get-it-on-github/refs/heads/main/get-it-on-github.png"
     alt="Get it on GitHub"
-    height="80">](https://github.com/legal-hkr/comfychair/releases/latest)
-[<img src="https://f-droid.org/badge/get-it-on.png"
-    alt="Get it on F-Droid"
-    height="80">](https://f-droid.org/packages/sh.hnet.comfychair)
+    height="80">](https://github.com/Glitch9Inc/comfymobile/releases/latest)
 
 ## Overview
 
-ComfyChair provides a streamlined mobile interface for interacting with ComfyUI servers, allowing you to generate and manage AI images and videos directly from your Android device. The app communicates with your ComfyUI server via its API, bringing the power of node-based AI generation to your mobile workflow.
+ComfyMobile provides a streamlined mobile interface for interacting with ComfyUI servers, allowing you to generate and manage AI images and videos directly from your Android device. The app communicates with your ComfyUI server via its API, bringing the power of node-based AI generation to your mobile workflow.
 
 **Note**: This is an independent, community-developed project and is not officially affiliated with or endorsed by the ComfyUI team.
+
+ComfyMobile is a fork of [ComfyChair](https://github.com/legal-hkr/comfychair) by Legal HKr.
 
 ## Screenshots
 
@@ -81,7 +80,7 @@ ComfyChair provides a streamlined mobile interface for interacting with ComfyUI 
   - Pull-to-refresh to update gallery
   - Multi-select mode with dedicated button or long press to select items
   - Batch operations: save, share, or delete multiple items at once
-- **Media management**: Save to device gallery (Pictures/ComfyChair or Movies/ComfyChair) or share
+- **Media management**: Save to device gallery (Pictures/ComfyMobile or Movies/ComfyMobile) or share
 
 ### Workflows
 
@@ -128,7 +127,7 @@ ComfyChair provides a streamlined mobile interface for interacting with ComfyUI 
   - Supported formats:
     - ComfyUI LiteGraph (import only) - native ComfyUI workflow format with subgraph support
     - ComfyUI API JSON (import/export) - workflow format used by the ComfyUI API
-    - ComfyChair JSON (import/export) - preserves field mappings and app settings
+    - ComfyMobile JSON (import/export) - preserves field mappings and app settings
   - Dynamic workflow thumbnails showing mini graph previews
   - Context menus for edit, rename, duplicate, export, and delete
   - Flexible field mapping: only Positive Prompt required (plus source image for image workflows)
@@ -173,8 +172,8 @@ ComfyChair provides a streamlined mobile interface for interacting with ComfyUI 
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/legal-hkr/comfychair.git
-   cd comfychair
+   git clone https://github.com/Glitch9Inc/comfymobile.git
+   cd comfymobile
    ```
 
 2. Set up your local environment:
@@ -232,5 +231,6 @@ This project follows standard Android development practices:
 
 ## Acknowledgments
 
+- [ComfyChair](https://github.com/legal-hkr/comfychair) - The original project ComfyMobile is forked from
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - The powerful node-based UI this app interfaces with
 - [Claude](https://claude.ai) by Anthropic - AI assistant that provided valuable support during the development process, helping with code implementation, architecture decisions, and documentation

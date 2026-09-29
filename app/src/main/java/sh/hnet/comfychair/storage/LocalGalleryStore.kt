@@ -20,7 +20,7 @@ import kotlin.coroutines.resume
  *
  * Layout: filesDir/local_gallery/{serverId}/index.json + original files.
  * Optionally also saves each item once to the phone's shared Photos
- * (Pictures/ComfyChair, Movies/ComfyChair).
+ * (Pictures/ComfyMobile, Movies/ComfyMobile).
  */
 object LocalGalleryStore {
     private const val TAG = "LocalGallery"
