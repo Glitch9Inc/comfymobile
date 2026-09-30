@@ -1,8 +1,16 @@
 package sh.hnet.comfychair.ui.navigation
 
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.navigation.compose.currentBackStackEntryAsState
+import sh.hnet.comfychair.ui.components.generate.LocalMainNav
+import sh.hnet.comfychair.ui.components.generate.MainNavActions
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -38,13 +46,21 @@ fun MainNavHost(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController()
 ) {
-    Scaffold(
-        bottomBar = {
-            MainNavigationBar(
-                navController = navController,
-                onNavigateToGallery = onNavigateToGallery
-            )
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val navActions = MainNavActions(
+        currentRoute = backStackEntry?.destination?.route,
+        onSelectMode = { route ->
+            navController.navigate(route.route) {
+                popUpTo(MainRoute.TextToImage.route) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
         },
+        onOpenGallery = onNavigateToGallery
+    )
+    // No bottom bar: each screen shows a mode button and a gallery button itself
+    CompositionLocalProvider(LocalMainNav provides navActions) {
+    Scaffold(
         modifier = modifier.imePadding()
     ) { paddingValues ->
         NavHost(
@@ -90,5 +106,6 @@ fun MainNavHost(
                 )
             }
         }
+    }
     }
 }

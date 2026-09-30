@@ -5,6 +5,8 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +30,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -65,6 +69,8 @@ import androidx.compose.ui.text.font.FontWeight
 import sh.hnet.comfychair.ui.components.WorkflowThumbnail
 import androidx.compose.ui.unit.dp
 import sh.hnet.comfychair.R
+import sh.hnet.comfychair.ui.components.SettingsSectionHeader
+import sh.hnet.comfychair.ui.components.LocalSettingsEmbedded
 import sh.hnet.comfychair.ui.components.SettingsMenuDropdown
 import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.WorkflowManager
@@ -183,6 +189,73 @@ fun WorkflowsSettingsScreen(
         }
     }
 
+    val embedded = LocalSettingsEmbedded.current
+    if (embedded) {
+        val sections = listOf(
+            stringResource(R.string.workflow_section_tti) to uiState.ttiWorkflows,
+            stringResource(R.string.workflow_section_iti_inpainting) to uiState.itiInpaintingWorkflows,
+            stringResource(R.string.workflow_section_iti_editing) to uiState.itiEditingWorkflows,
+            stringResource(R.string.workflow_section_ttv) to uiState.ttvWorkflows,
+            stringResource(R.string.workflow_section_itv) to uiState.itvWorkflows
+        )
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+            SettingsSectionHeader(stringResource(R.string.title_workflows_settings))
+            // Import / create actions (shown as buttons, since there is no app bar here)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(onClick = { viewModel.openServerWorkflows() }) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.button_import_from_comfyui))
+                }
+                OutlinedButton(onClick = { jsonPickerLauncher.launch("application/json") }) {
+                    Icon(Icons.Default.UploadFile, contentDescription = stringResource(R.string.button_import), modifier = Modifier.size(18.dp))
+                }
+                OutlinedButton(onClick = {
+                    createEditorLauncher.launch(WorkflowEditorActivity.createIntentForNewWorkflow(context))
+                }) {
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.button_new_workflow), modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            if (uiState.isLoading) {
+                CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+            } else if (sections.all { it.second.isEmpty() }) {
+                Text(
+                    stringResource(R.string.workflow_section_empty),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                // One list; the type is shown as a badge on each row
+                val badges = listOf("T2I", "INP", "EDIT", "T2V", "I2V")
+                val rows = sections.flatMapIndexed { i, (_, list) -> list.map { badges[i] to it } }
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column {
+                        rows.forEachIndexed { index, (badge, workflow) ->
+                            key(workflow.id) {
+                                WorkflowListItemContent(
+                                    workflow = workflow,
+                                    onClick = { context.startActivity(WorkflowEditorActivity.createIntent(context, workflow.id)) },
+                                    onEditStructure = { editExistingLauncher.launch(WorkflowEditorActivity.createIntentForEditingExisting(context, workflow.id)) },
+                                    onRename = { viewModel.onEditWorkflow(workflow) },
+                                    onDuplicate = { viewModel.onDuplicateWorkflow(workflow) },
+                                    onExport = { format -> viewModel.onExportWorkflow(workflow, format) },
+                                    onDelete = { viewModel.onDeleteWorkflow(workflow) },
+                                    badge = badge
+                                )
+                                if (index < rows.size - 1) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 16.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    } else
     Column(modifier = Modifier.fillMaxSize()) {
         // Top App Bar
         TopAppBar(
@@ -196,6 +269,10 @@ fun WorkflowsSettingsScreen(
                     )
                 }) {
                     Icon(Icons.Default.Add, contentDescription = stringResource(R.string.button_new_workflow))
+                }
+                // Import from ComfyUI's saved workflows (on the server PC)
+                IconButton(onClick = { viewModel.openServerWorkflows() }) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = stringResource(R.string.button_import_from_comfyui))
                 }
                 // Import button
                 IconButton(onClick = { jsonPickerLauncher.launch("application/json") }) {
@@ -305,6 +382,16 @@ fun WorkflowsSettingsScreen(
     }
 
     // Import dialog
+    if (uiState.showServerWorkflowsDialog) {
+        ServerWorkflowsDialog(
+            isLoading = uiState.isLoadingServerWorkflows,
+            isError = uiState.serverWorkflowsError,
+            paths = uiState.serverWorkflows,
+            onSelect = viewModel::importServerWorkflow,
+            onDismiss = viewModel::dismissServerWorkflows
+        )
+    }
+
     if (uiState.showImportDialog) {
         ImportWorkflowDialog(
             selectedType = uiState.importSelectedType,
@@ -477,7 +564,8 @@ private fun WorkflowListItemContent(
     onRename: () -> Unit,
     onDuplicate: () -> Unit,
     onExport: (ExportFormat) -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    badge: String? = null
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
 
@@ -488,11 +576,30 @@ private fun WorkflowListItemContent(
             .padding(start = 16.dp, top = 12.dp, bottom = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (badge != null) {
+            // Compact row: type badge instead of the graph thumbnail
+            val video = badge.endsWith("V")
+            Text(
+                badge,
+                fontSize = 10.5.sp, fontWeight = FontWeight.ExtraBold,
+                color = if (video) sh.hnet.comfychair.ui.components.generate.Brand.Lime else sh.hnet.comfychair.ui.components.generate.Brand.BlueText,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                modifier = Modifier
+                    .width(44.dp)
+                    .background(
+                        if (video) sh.hnet.comfychair.ui.components.generate.Brand.Lime.copy(alpha = .14f)
+                        else sh.hnet.comfychair.ui.components.generate.Brand.BlueSoft,
+                        androidx.compose.foundation.shape.RoundedCornerShape(7.dp)
+                    )
+                    .padding(vertical = 3.dp)
+            )
+        } else {
         // Workflow graph thumbnail
         WorkflowThumbnail(
             jsonContent = workflow.jsonContent,
             modifier = Modifier.size(48.dp)
         )
+        }
 
         Spacer(modifier = Modifier.width(12.dp))
 
@@ -953,6 +1060,60 @@ private fun DuplicateWorkflowDialog(
             OutlinedButton(onClick = onDismiss) {
                 Text(stringResource(R.string.button_cancel))
             }
+        }
+    )
+}
+
+/**
+ * Lists workflows saved in ComfyUI on the server PC; tapping one imports it.
+ */
+@Composable
+private fun ServerWorkflowsDialog(
+    isLoading: Boolean,
+    isError: Boolean,
+    paths: List<String>,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.title_comfyui_workflows)) },
+        text = {
+            when {
+                isLoading -> Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) { CircularProgressIndicator() }
+                isError -> Text(stringResource(R.string.error_comfyui_workflows))
+                paths.isEmpty() -> Text(stringResource(R.string.msg_comfyui_workflows_empty))
+                else -> LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                    items(paths) { path ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(path) }
+                                .padding(vertical = 12.dp)
+                        ) {
+                            Text(
+                                text = path.substringAfterLast('/').removeSuffix(".json"),
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            if (path.contains('/')) {
+                                Text(
+                                    text = path.substringBeforeLast('/'),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.button_cancel)) }
         }
     )
 }

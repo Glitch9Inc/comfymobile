@@ -142,7 +142,10 @@ object WorkflowManager {
      */
     private fun loadAllWorkflows() {
         workflows.clear()
-        loadBuiltInWorkflows()
+        // Built-in samples only when enabled in settings (off by default)
+        if (sh.hnet.comfychair.storage.AppSettings.isShowBuiltInWorkflows(applicationContext)) {
+            loadBuiltInWorkflows()
+        }
         loadUserWorkflows()
     }
 

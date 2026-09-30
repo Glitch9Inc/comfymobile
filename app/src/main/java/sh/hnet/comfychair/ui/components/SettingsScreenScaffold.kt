@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +39,15 @@ fun SettingsScreenScaffold(
     horizontalPadding: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
+    // On the one-page settings screen, sections are stacked inside one scroll:
+    // no app bar, no own scroll, just a section header and the content.
+    if (LocalSettingsEmbedded.current) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = horizontalPadding)) {
+            SettingsSectionHeader(title, Modifier.padding(start = if (horizontalPadding < 16.dp) 16.dp - horizontalPadding else 0.dp))
+            content()
+        }
+        return
+    }
     Column(modifier = Modifier.fillMaxSize()) {
         TopAppBar(
             title = { Text(title) },
@@ -59,4 +70,20 @@ fun SettingsScreenScaffold(
             )
         }
     }
+}
+
+/** True when a settings screen is shown as a section of the one-page settings screen. */
+val LocalSettingsEmbedded = androidx.compose.runtime.staticCompositionLocalOf { false }
+
+/** Section header used on the one-page settings screen. */
+@Composable
+fun SettingsSectionHeader(title: String, modifier: Modifier = Modifier) {
+    Text(
+        text = title.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.ExtraBold,
+        letterSpacing = androidx.compose.ui.unit.TextUnit(1.2f, androidx.compose.ui.unit.TextUnitType.Sp),
+        modifier = modifier.padding(top = 20.dp, bottom = 8.dp)
+    )
 }

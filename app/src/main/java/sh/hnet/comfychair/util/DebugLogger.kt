@@ -42,7 +42,7 @@ object DebugLogger {
     private const val MAX_ENTRIES = 1000
 
     private const val LOGCAT_ENABLED = false
-    private const val LOGCAT_TAG = "ComfyChair"
+    private const val LOGCAT_TAG = "ComfyMobile"
 
     /**
      * Enable or disable logging.
@@ -133,7 +133,7 @@ object DebugLogger {
      */
     fun exportToString(): String {
         val header = buildString {
-            appendLine("=== ComfyChair Debug Log ===")
+            appendLine("=== ComfyMobile Debug Log ===")
             appendLine("Exported: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())}")
             appendLine("Entries: ${entries.size}")
             appendLine("===========================")

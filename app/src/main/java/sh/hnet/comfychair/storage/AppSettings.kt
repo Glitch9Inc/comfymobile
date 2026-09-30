@@ -125,7 +125,7 @@ object AppSettings {
      */
     fun isShowBuiltInWorkflows(context: Context): Boolean {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getBoolean(KEY_SHOW_BUILT_IN_WORKFLOWS, true)  // Default: true (show built-in)
+            .getBoolean(KEY_SHOW_BUILT_IN_WORKFLOWS, false)  // Default: false (only your own workflows)
     }
 
     /**
@@ -210,4 +210,36 @@ object AppSettings {
             .apply()
     }
 
+    private const val KEY_SAVE_TO_PHONE = "save_to_phone"
+
+    /**
+     * Whether gallery outputs are also saved to the phone's Photos
+     * (Pictures/ComfyMobile, Movies/ComfyMobile). Default: false (only kept inside the app).
+     */
+    fun isSaveToPhoneEnabled(context: Context): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_SAVE_TO_PHONE, false)
+    }
+
+    fun setSaveToPhoneEnabled(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_SAVE_TO_PHONE, enabled)
+            .apply()
+    }
+
+    private const val KEY_GALLERY_VIEW_MODE = "gallery_view_mode"
+
+    /** Gallery view mode name (see GalleryViewMode). */
+    fun getGalleryViewMode(context: Context): String? {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_GALLERY_VIEW_MODE, null)
+    }
+
+    fun setGalleryViewMode(context: Context, mode: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_GALLERY_VIEW_MODE, mode)
+            .apply()
+    }
 }

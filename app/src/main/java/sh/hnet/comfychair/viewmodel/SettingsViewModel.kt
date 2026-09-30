@@ -100,6 +100,9 @@ class SettingsViewModel : ViewModel() {
     private val _serverSettingsState = MutableStateFlow(ServerSettingsUiState())
     val serverSettingsState: StateFlow<ServerSettingsUiState> = _serverSettingsState.asStateFlow()
 
+    private val _isSaveToPhoneEnabled = MutableStateFlow(false)
+    val isSaveToPhoneEnabled: StateFlow<Boolean> = _isSaveToPhoneEnabled.asStateFlow()
+
     private val _isLivePreviewEnabled = MutableStateFlow(true)
     val isLivePreviewEnabled: StateFlow<Boolean> = _isLivePreviewEnabled.asStateFlow()
 
@@ -140,6 +143,7 @@ class SettingsViewModel : ViewModel() {
         )
         // Load settings
         _isLivePreviewEnabled.value = AppSettings.isLivePreviewEnabled(context)
+        _isSaveToPhoneEnabled.value = AppSettings.isSaveToPhoneEnabled(context)
         _isMemoryFirstCache.value = AppSettings.isMemoryFirstCache(context)
         _isMediaCacheDisabled.value = AppSettings.isMediaCacheDisabled(context)
         _isDebugLoggingEnabled.value = AppSettings.isDebugLoggingEnabled(context)
@@ -420,6 +424,14 @@ class SettingsViewModel : ViewModel() {
     }
 
     /**
+     * Set whether gallery outputs are also saved to the phone's Photos.
+     */
+    fun setSaveToPhoneEnabled(context: Context, enabled: Boolean) {
+        AppSettings.setSaveToPhoneEnabled(context, enabled)
+        _isSaveToPhoneEnabled.value = enabled
+    }
+
+    /**
      * Set whether live preview should be enabled.
      */
     fun setLivePreviewEnabled(context: Context, enabled: Boolean) {
@@ -493,6 +505,7 @@ class SettingsViewModel : ViewModel() {
     fun setShowBuiltInWorkflows(context: Context, show: Boolean) {
         AppSettings.setShowBuiltInWorkflows(context, show)
         _isShowBuiltInWorkflows.value = show
+        WorkflowManager.reloadWorkflows()
         // Notify that workflows need to be reloaded
         viewModelScope.launch {
             _events.emit(SettingsEvent.RefreshNeeded)

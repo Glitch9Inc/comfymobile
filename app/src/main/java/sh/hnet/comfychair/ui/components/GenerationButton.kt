@@ -77,8 +77,8 @@ fun GenerationButton(
     var showMenu by remember { mutableStateOf(false) }
 
     // Button always uses primary color (no more red cancel state)
-    val containerColor = MaterialTheme.colorScheme.primary
-    val contentColor = MaterialTheme.colorScheme.onPrimary
+    val containerColor = sh.hnet.comfychair.ui.components.generate.Brand.Lime
+    val contentColor = sh.hnet.comfychair.ui.components.generate.Brand.LimeInk
 
     // Button text changes based on connection/upload/fetch state and queue size
     val buttonText = when {

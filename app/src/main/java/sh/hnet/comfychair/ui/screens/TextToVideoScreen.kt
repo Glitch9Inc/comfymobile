@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -38,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -90,6 +95,10 @@ import sh.hnet.comfychair.viewmodel.PromptPresetEvent
 import sh.hnet.comfychair.viewmodel.PromptPresetViewModel
 import sh.hnet.comfychair.viewmodel.TextToVideoEvent
 import sh.hnet.comfychair.viewmodel.TextToVideoViewModel
+import sh.hnet.comfychair.viewmodel.MediaViewerItem
+import sh.hnet.comfychair.ui.components.generate.WorkflowChip
+import sh.hnet.comfychair.ui.components.generate.RecentResultsStrip
+import sh.hnet.comfychair.ui.components.generate.ModeMenuButton
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -137,7 +146,7 @@ fun TextToVideoScreen(
     var prevImeHeight by remember { mutableStateOf(imeHeight) }
     SideEffect { prevImeHeight = imeHeight }
     var promptFocused by remember { mutableStateOf(false) }
-    val expandPrompt = promptExpandEnabled && promptFocused && imeHeight > 0 && imeHeight >= prevImeHeight
+    val expandPrompt = promptFocused && imeHeight > 0 && imeHeight >= prevImeHeight
 
     var showOptionsSheet by remember { mutableStateOf(false) }
 
@@ -245,7 +254,13 @@ fun TextToVideoScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Top App Bar with save/share actions
         TopAppBar(
-            title = { Text(stringResource(R.string.title_text_to_video)) },
+            title = {
+                WorkflowChip(
+                    workflows = uiState.availableWorkflows.map { it.name },
+                    selected = uiState.selectedWorkflow,
+                    onSelect = textToVideoViewModel::onWorkflowChange
+                )
+            },
             windowInsets = WindowInsets(0, 0, 0, 0),
             actions = {
                 // Save to gallery button (only when video exists)
@@ -265,6 +280,7 @@ fun TextToVideoScreen(
                     }
                 }
                 // Menu button
+                ModeMenuButton()
                 AppMenuDropdown(
                     onSettings = onNavigateToSettings,
                     onLogout = onLogout
@@ -281,18 +297,17 @@ fun TextToVideoScreen(
             )
         }
 
-        // Video preview area — collapses when typing in the prompt field
-        AnimatedVisibility(
-            visible = !expandPrompt,
-            modifier = Modifier.weight(1f),
-            enter = fadeIn(tween(150)),
-            exit = ExitTransition.None
-        ) {
+        // Wide screens (tablet / unfolded): preview on the left, controls on the right
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        val isWide = maxWidth >= 600.dp
+
+        val previewContent: @Composable (Modifier) -> Unit = { boxModifier ->
+            Box(modifier = boxModifier) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .heightIn(min = 150.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .background(MaterialTheme.colorScheme.background)
                     .clickable(enabled = videoUri != null) {
                     // Launch MediaViewer for single video
                         videoUri?.let { uri ->
@@ -327,17 +342,33 @@ fun TextToVideoScreen(
                     }
                     // Show placeholder - app logo
                     else -> {
-                        Image(
-                            painter = painterResource(R.drawable.ic_comfychair_foreground),
-                            contentDescription = stringResource(R.string.placeholder_video),
-                            modifier = Modifier.size(Dimensions.PlaceholderLogoSize),
-                            contentScale = ContentScale.Fit
-                        )
                     }
                 }
             }
+            }
         }
 
+        val controlsContent: @Composable ColumnScope.() -> Unit = {
+        // Recent results + gallery button (replaces the old bottom bar)
+        if (!expandPrompt) {
+            RecentResultsStrip(
+                selectedKey = null,
+                onSelect = { item ->
+                    context.startActivity(
+                        MediaViewerActivity.createPreviewIntent(
+                            context = context,
+                            hostname = generationViewModel.getHostname(),
+                            port = generationViewModel.getPort(),
+                            bitmap = null,
+                            filename = item.filename,
+                            subfolder = item.subfolder,
+                            type = item.type
+                        )
+                    )
+                },
+                modifier = Modifier.padding(horizontal = 16.dp).padding(top = 8.dp)
+            )
+        }
         // Prompt Input — expands to fill screen above keyboard when focused
         OutlinedTextField(
             value = uiState.positivePrompt,
@@ -348,11 +379,11 @@ fun TextToVideoScreen(
             label = { Text(stringResource(R.string.hint_prompt)) },
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (expandPrompt) Modifier.weight(1f) else Modifier)
+                .then(if (expandPrompt || isWide) Modifier.weight(1f) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .onFocusChanged { promptFocused = it.isFocused },
-            minLines = 2,
-            maxLines = if (expandPrompt) Int.MAX_VALUE else 4,
+            minLines = 3,
+            maxLines = if (expandPrompt || isWide) Int.MAX_VALUE else 4,
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = spellCheckEnabled),
             visualTransformation = positivePromptTransformation,
             leadingIcon = {
@@ -473,6 +504,33 @@ fun TextToVideoScreen(
                 )
             }
         }
+        }
+
+        if (isWide) {
+            Row(modifier = Modifier.fillMaxSize()) {
+                previewContent(Modifier.weight(1f).fillMaxHeight())
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxHeight().padding(top = 8.dp),
+                    verticalArrangement = Arrangement.Bottom
+                ) {
+                    controlsContent()
+                }
+            }
+        } else {
+            Column(modifier = Modifier.fillMaxSize()) {
+        // Video preview area — collapses when typing in the prompt field
+        AnimatedVisibility(
+            visible = !expandPrompt,
+            modifier = Modifier.weight(1f),
+            enter = fadeIn(tween(150)),
+            exit = ExitTransition.None
+        ) {
+            previewContent(Modifier.fillMaxSize())
+        }
+                controlsContent()
+            }
+        }
+        } // End of BoxWithConstraints
     } // End of outer Column
 
     // Options bottom sheet
@@ -480,7 +538,7 @@ fun TextToVideoScreen(
         ModalBottomSheet(
             onDismissRequest = { showOptionsSheet = false },
             sheetState = configSheetState,
-            contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+            contentWindowInsets = { WindowInsets.safeDrawing }
         ) {
             val callbacks = remember(textToVideoViewModel) {
                 UnifiedCallbacks(

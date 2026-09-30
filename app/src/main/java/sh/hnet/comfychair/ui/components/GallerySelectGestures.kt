@@ -1,0 +1,130 @@
+package sh.hnet.comfychair.ui.components
+
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.max
+import kotlin.math.min
+
+/**
+ * Shared state for drag-to-select in the gallery grid.
+ * [autoScrollSpeed] is non-zero while the finger is near the top/bottom edge during a
+ * selection drag; the grid scrolls by it and calls [onAutoScrolled] to extend the range.
+ */
+class DragSelectState {
+    var autoScrollSpeed by mutableFloatStateOf(0f)
+    internal var anchorIndex = -1
+    internal var baseSelection: Set<String> = emptySet()
+    internal var lastPosition: Offset? = null
+    internal var update: ((Offset) -> Unit)? = null
+
+    fun onAutoScrolled() {
+        val pos = lastPosition ?: return
+        update?.invoke(pos)
+    }
+}
+
+/**
+ * Gallery grid gestures:
+ * - Tap an item: [onTap]
+ * - Long-press an item: select it (or unselect it if already selected)
+ * - Long-press and drag: select every item between the first and the current one
+ *
+ * @param keyAt Returns the item key under a position in the grid, or null
+ * @param keys Current item keys in display order
+ * @param selection Current selection
+ */
+fun Modifier.gallerySelectGestures(
+    state: DragSelectState,
+    haptics: HapticFeedback,
+    edgeThreshold: Float,
+    keyAt: (Offset) -> String?,
+    keys: () -> List<String>,
+    selection: () -> Set<String>,
+    onTap: (String) -> Unit,
+    onSelectionChange: (Set<String>) -> Unit
+): Modifier = pointerInput(Unit) {
+    fun extendTo(position: Offset) {
+        if (state.anchorIndex < 0) return
+        state.lastPosition = position
+        val key = keyAt(position) ?: return
+        val all = keys()
+        val index = all.indexOf(key)
+        if (index < 0) return
+        val range = all.subList(min(state.anchorIndex, index), max(state.anchorIndex, index) + 1)
+        onSelectionChange(state.baseSelection + range)
+    }
+    state.update = ::extendTo
+
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+
+        // Tap (up before the long-press timeout) or cancel (scrolling consumed the pointer)
+        var up: PointerInputChange? = null
+        val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
+            up = waitForUpOrCancellation()
+            true
+        }
+        if (released == true) {
+            up?.let { change ->
+                keyAt(down.position)?.let { key ->
+                    change.consume()
+                    onTap(key)
+                }
+            }
+            return@awaitEachGesture
+        }
+
+        // Long press
+        val key = keyAt(down.position) ?: return@awaitEachGesture
+        val index = keys().indexOf(key)
+        if (index < 0) return@awaitEachGesture
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        val current = selection()
+        if (key in current) {
+            // Long-press on a selected item unselects it (no range drag)
+            onSelectionChange(current - key)
+            state.anchorIndex = -1
+        } else {
+            state.baseSelection = current
+            state.anchorIndex = index
+            onSelectionChange(current + key)
+        }
+
+        // Drag: consume in the Initial pass so the grid does not scroll by itself
+        try {
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) {
+                    change.consume()
+                    break
+                }
+                change.consume()
+                if (state.anchorIndex >= 0) {
+                    val y = change.position.y
+                    state.autoScrollSpeed = when {
+                        y > size.height - edgeThreshold -> y - (size.height - edgeThreshold)
+                        y < edgeThreshold -> -(edgeThreshold - y)
+                        else -> 0f
+                    }
+                    extendTo(change.position)
+                }
+            }
+        } finally {
+            state.anchorIndex = -1
+            state.lastPosition = null
+            state.autoScrollSpeed = 0f
+        }
+    }
+}

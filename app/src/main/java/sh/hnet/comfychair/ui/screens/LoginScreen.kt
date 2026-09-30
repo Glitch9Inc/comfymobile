@@ -63,7 +63,24 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.suspendCancellableCoroutine
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 
 /**
  * Connection states for the login screen
@@ -102,6 +119,8 @@ fun LoginScreen() {
     var warningMessage by remember { mutableStateOf<String?>(null) }
     var comfyUIClient by remember { mutableStateOf<ComfyUIClient?>(null) }
     var hasAutoConnected by remember { mutableStateOf(false) }
+    // Running connection attempt (cancelled when the user taps the button while connecting)
+    var connectJob by remember { mutableStateOf<Job?>(null) }
 
     // Dialog state
     var showServerDialog by remember { mutableStateOf(false) }
@@ -163,7 +182,7 @@ fun LoginScreen() {
         connectionState = ConnectionState.CONNECTING
         warningMessage = null
 
-        scope.launch {
+        connectJob = scope.launch {
             // Load credentials for the server
             val credentials = credentialStorage.getCredentials(server.id, server.authType)
 
@@ -188,10 +207,10 @@ fun LoginScreen() {
             )
             comfyUIClient = client
 
-            // Test connection using suspendCoroutine
-            val result = suspendCoroutine { continuation ->
+            // Test connection (cancellable: a late result after cancel is ignored)
+            val result = suspendCancellableCoroutine<Triple<Boolean, String?, CertificateIssue>> { continuation ->
                 client.testConnection { success, errorMessage, certIssue, _ ->
-                    continuation.resume(Triple(success, errorMessage, certIssue))
+                    if (continuation.isActive) continuation.resume(Triple(success, errorMessage, certIssue))
                 }
             }
 
@@ -275,19 +294,33 @@ fun LoginScreen() {
         attemptConnection(server, isRetryAfterAuth = true)
     }
 
-    // Offline connection function - loads from cache instead of connecting to server
-    fun attemptOfflineConnection(server: Server) {
+    // Stop a running connection attempt and go back to idle
+    fun cancelConnection() {
+        connectJob?.cancel()
+        connectJob = null
+        comfyUIClient?.shutdown()
+        comfyUIClient = null
+        connectionState = ConnectionState.IDLE
+        warningMessage = null
+        Toast.makeText(context, R.string.msg_connection_cancelled, Toast.LENGTH_SHORT).show()
+    }
+
+    // Offline connection function - loads from cache instead of connecting to server.
+    // requireCache = false lets the user start offline even without cached server data
+    // (only the on-device gallery is usable then).
+    fun attemptOfflineConnection(server: Server?, requireCache: Boolean = true) {
+        val serverId = server?.id ?: ConnectionManager.OFFLINE_SERVER_ID
         // Check if cache exists for this server
-        if (!ConnectionManager.hasOfflineCache(context, server.id)) {
+        if (requireCache && !ConnectionManager.hasOfflineCache(context, serverId)) {
             Toast.makeText(context, R.string.error_no_offline_cache, Toast.LENGTH_LONG).show()
             return
         }
 
         connectionState = ConnectionState.CONNECTING
 
-        scope.launch {
+        connectJob = scope.launch {
             // Load data from cache
-            val success = ConnectionManager.loadFromOfflineCache(context, server.id)
+            val success = ConnectionManager.loadFromOfflineCache(context, serverId, requireCache)
 
             if (success) {
                 connectionState = ConnectionState.CONNECTED
@@ -295,7 +328,7 @@ fun LoginScreen() {
                 delay(500)
 
                 // Save selected server
-                serverStorage.setSelectedServerId(server.id)
+                server?.let { serverStorage.setSelectedServerId(it.id) }
 
                 // Navigate to main activity (no actual connection established)
                 val intent = Intent(context, MainContainerActivity::class.java)
@@ -485,92 +518,138 @@ fun LoginScreen() {
     }
 
     // UI
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color(0xFF1A8CFF).copy(alpha = 0.18f),
+                    0.45f to MaterialTheme.colorScheme.background,
+                    1f to MaterialTheme.colorScheme.background
+                )
+            )
             .statusBarsPadding()
             .navigationBarsPadding()
-            .imePadding()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .imePadding(),
+        contentAlignment = Alignment.Center
     ) {
-        // App logo and name
-        // The text has a -16dp offset to tuck it closer to the icon (which has built-in padding).
-        // To keep the visual center aligned, we offset the entire Row by half that amount (-8dp).
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.offset(x = (-8).dp)
-        ) {
-            Image(
-                painter = painterResource(R.drawable.ic_comfychair_foreground),
-                contentDescription = null,
-                modifier = Modifier.size(112.dp)
-            )
-            Text(
-                text = stringResource(R.string.app_name),
-                fontSize = 36.sp,
-                fontFamily = FontFamily.Serif,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.offset(x = (-16).dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(48.dp))
-
-        // Server dropdown
-        ServerDropdown(
-            servers = servers,
-            selectedServer = selectedServer,
-            onServerSelected = { server ->
-                selectedServer = server
-                serverStorage.setSelectedServerId(server.id)
-            },
-            modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .widthIn(max = 440.dp)
+            .fillMaxWidth()
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Logo
+        Image(
+            painter = painterResource(R.drawable.logo_cm),
+            contentDescription = null,
+            modifier = Modifier.size(96.dp)
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        // Connect split button with server management
-        ConnectionSplitButton(
-            connectionState = connectionState,
-            hasSelectedServer = selectedServer != null,
-            isOfflineMode = isOfflineMode,
-            onConnect = {
-                if (selectedServer != null) {
-                    if (isOfflineMode) {
-                        attemptOfflineConnection(selectedServer!!)
-                    } else {
-                        attemptConnection(selectedServer!!)
+        // App name: "Comfy" + accent "Mobile"
+        Text(
+            text = buildAnnotatedString {
+                append("Comfy")
+                withStyle(SpanStyle(color = Color(0xFF1A8CFF))) { append("Mobile") }
+            },
+            fontSize = 34.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.login_subtitle),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(40.dp))
+
+        // Server card
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            tonalElevation = 2.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                // Server dropdown
+                ServerDropdown(
+                    servers = servers,
+                    selectedServer = selectedServer,
+                    onServerSelected = { server ->
+                        selectedServer = server
+                        serverStorage.setSelectedServerId(server.id)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Connect split button with server management
+                ConnectionSplitButton(
+                    connectionState = connectionState,
+                    hasSelectedServer = selectedServer != null,
+                    isOfflineMode = isOfflineMode,
+                    onCancel = { cancelConnection() },
+                    onConnect = {
+                        if (selectedServer != null) {
+                            if (isOfflineMode) {
+                                attemptOfflineConnection(selectedServer!!)
+                            } else {
+                                attemptConnection(selectedServer!!)
+                            }
+                        }
+                    },
+                    onGoOnline = {
+                        AppSettings.setOfflineMode(context, false)
+                        isOfflineMode = false
+                    },
+                    onAddServer = {
+                        serverToEdit = null
+                        showServerDialog = true
+                    },
+                    onEditServer = {
+                        serverToEdit = selectedServer
+                        showServerDialog = true
+                    },
+                    onRemoveServer = {
+                        showDeleteConfirmation = true
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Start in offline mode right away (no connection attempt)
+                if (!isOfflineMode && connectionState == ConnectionState.IDLE) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = {
+                            AppSettings.setOfflineMode(context, true)
+                            isOfflineMode = true
+                            attemptOfflineConnection(selectedServer, requireCache = false)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CloudOff, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.button_start_offline))
                     }
                 }
-            },
-            onGoOnline = {
-                AppSettings.setOfflineMode(context, false)
-                isOfflineMode = false
-            },
-            onAddServer = {
-                serverToEdit = null
-                showServerDialog = true
-            },
-            onEditServer = {
-                serverToEdit = selectedServer
-                showServerDialog = true
-            },
-            onRemoveServer = {
-                showDeleteConfirmation = true
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
 
-        // Warning message
-        warningMessage?.let { message ->
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = message,
-                color = MaterialTheme.colorScheme.secondary,
-                fontSize = 14.sp
-            )
+                // Warning message
+                warningMessage?.let { message ->
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontSize = 14.sp
+                    )
+                }
+            }
         }
+    }
     }
 }

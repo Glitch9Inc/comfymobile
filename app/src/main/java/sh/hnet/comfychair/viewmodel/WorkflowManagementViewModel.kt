@@ -100,7 +100,13 @@ data class WorkflowManagementUiState(
     val exportFormat: ExportFormat = ExportFormat.INTERNAL,
 
     // Loading state
-    val isLoading: Boolean = false
+    val isLoading: Boolean = false,
+
+    // Import from ComfyUI's own workflow library (on the server PC)
+    val showServerWorkflowsDialog: Boolean = false,
+    val isLoadingServerWorkflows: Boolean = false,
+    val serverWorkflows: List<String> = emptyList(),
+    val serverWorkflowsError: Boolean = false
 )
 
 /**
@@ -190,35 +196,81 @@ class WorkflowManagementViewModel : ViewModel() {
                 val jsonContent = withContext(Dispatchers.IO) {
                     context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
                 }
-
-                // Validate JSON format
-                try {
-                    JSONObject(jsonContent)
-                } catch (e: Exception) {
-                    _events.emit(WorkflowManagementEvent.ShowToast(R.string.error_workflow_invalid_json))
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                    return@launch
-                }
-
-                // Auto-detect type as suggestion (user can override)
-                val detectedType = WorkflowManager.detectWorkflowType(jsonContent)
-
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    showImportDialog = true,
-                    pendingImportJsonContent = jsonContent,
-                    importSelectedType = detectedType,
-                    importTypeDropdownExpanded = false,
-                    importName = "",
-                    importDescription = "",
-                    importNameError = null,
-                    importDescriptionError = null
-                )
+                startImport(jsonContent, suggestedName = "")
             } catch (e: Exception) {
                 _events.emit(WorkflowManagementEvent.ShowToast(R.string.error_workflow_import))
                 _uiState.value = _uiState.value.copy(isLoading = false)
             }
         }
+    }
+
+    // Import from ComfyUI's workflow library
+
+    /** Open the list of workflows saved in ComfyUI on the server PC. */
+    fun openServerWorkflows() {
+        val client = ConnectionManager.clientOrNull
+        _uiState.value = _uiState.value.copy(
+            showServerWorkflowsDialog = true,
+            isLoadingServerWorkflows = client != null,
+            serverWorkflows = emptyList(),
+            serverWorkflowsError = client == null
+        )
+        client ?: return
+        client.fetchSavedWorkflowList { paths ->
+            _uiState.value = _uiState.value.copy(
+                isLoadingServerWorkflows = false,
+                serverWorkflows = paths ?: emptyList(),
+                serverWorkflowsError = paths == null
+            )
+        }
+    }
+
+    fun dismissServerWorkflows() {
+        _uiState.value = _uiState.value.copy(showServerWorkflowsDialog = false)
+    }
+
+    /** Download a ComfyUI-saved workflow and continue with the normal import flow. */
+    fun importServerWorkflow(path: String) {
+        val client = ConnectionManager.clientOrNull ?: return
+        _uiState.value = _uiState.value.copy(showServerWorkflowsDialog = false, isLoading = true)
+        client.fetchSavedWorkflow(path) { json ->
+            viewModelScope.launch {
+                if (json == null) {
+                    _events.emit(WorkflowManagementEvent.ShowToast(R.string.error_workflow_import))
+                    _uiState.value = _uiState.value.copy(isLoading = false)
+                } else {
+                    val name = path.substringAfterLast('/').removeSuffix(".json").removeSuffix(".JSON")
+                    startImport(json, ValidationUtils.truncateWorkflowName(name))
+                }
+            }
+        }
+    }
+
+    /** Shared import entry: validate JSON and show the import dialog. */
+    private suspend fun startImport(jsonContent: String, suggestedName: String) {
+        // Validate JSON format
+        try {
+            JSONObject(jsonContent)
+        } catch (e: Exception) {
+            _events.emit(WorkflowManagementEvent.ShowToast(R.string.error_workflow_invalid_json))
+            _uiState.value = _uiState.value.copy(isLoading = false)
+            return
+        }
+
+        // Auto-detect type as suggestion (user can override)
+        val detectedType = WorkflowManager.detectWorkflowType(jsonContent)
+
+        _uiState.value = _uiState.value.copy(
+            isLoading = false,
+            showImportDialog = true,
+            pendingImportJsonContent = jsonContent,
+            importSelectedType = detectedType,
+            importTypeDropdownExpanded = false,
+            importName = suggestedName,
+            importDescription = "",
+            importNameError = null,
+            importDescriptionError = null
+        )
     }
 
     fun onImportTypeSelected(type: WorkflowType) {

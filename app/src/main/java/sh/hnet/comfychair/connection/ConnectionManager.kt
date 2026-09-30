@@ -84,6 +84,9 @@ object ConnectionManager {
     private const val KEEPALIVE_INTERVAL_MS = 30000L
     private const val MAX_RECONNECT_ATTEMPTS = 3
 
+    /** Server ID used when starting offline with no server configured */
+    const val OFFLINE_SERVER_ID = "offline"
+
     // Connection state
     private val _connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val connectionState: StateFlow<ConnectionState> = _connectionState.asStateFlow()
@@ -971,19 +974,18 @@ object ConnectionManager {
      *
      * @param context Application context for cache access
      * @param serverId Server ID to load cache for
+     * @param requireCache When false, offline mode starts even without cached server data
+     *   (empty model lists; only on-device media is available)
      * @return true if cache was loaded successfully, false otherwise
      */
-    fun loadFromOfflineCache(context: Context, serverId: String): Boolean {
+    fun loadFromOfflineCache(context: Context, serverId: String, requireCache: Boolean = true): Boolean {
         DebugLogger.i(TAG, "Loading server data from offline cache for server: $serverId")
 
-        if (!ObjectInfoCache.hasCache(context, serverId)) {
-            DebugLogger.w(TAG, "No offline cache available for server: $serverId")
-            return false
-        }
-
-        val objectInfo = ObjectInfoCache.loadObjectInfo(context, serverId)
-        if (objectInfo == null) {
-            DebugLogger.e(TAG, "Failed to load offline cache for server: $serverId")
+        val objectInfo = if (ObjectInfoCache.hasCache(context, serverId)) {
+            ObjectInfoCache.loadObjectInfo(context, serverId)
+        } else null
+        if (objectInfo == null && requireCache) {
+            DebugLogger.w(TAG, "No usable offline cache for server: $serverId")
             return false
         }
 
@@ -994,7 +996,9 @@ object ConnectionManager {
         _connectionState.value = ConnectionState.OfflineConnected(serverId = serverId)
 
         // Parse node definitions for workflow editor
-        nodeTypeRegistry.parseObjectInfo(objectInfo)
+        if (objectInfo != null) {
+            nodeTypeRegistry.parseObjectInfo(objectInfo)
+        }
 
         // Extract model lists for generation screens
         val models = extractModelLists()

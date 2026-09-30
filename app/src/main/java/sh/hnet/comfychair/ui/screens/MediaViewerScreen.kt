@@ -24,6 +24,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Slideshow
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.delay
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Info
@@ -70,6 +75,9 @@ import sh.hnet.comfychair.viewmodel.MediaViewerEvent
 import sh.hnet.comfychair.viewmodel.MediaViewerViewModel
 import sh.hnet.comfychair.viewmodel.ViewerMode
 
+/** Time each item stays on screen during a slideshow */
+private const val SLIDESHOW_INTERVAL_MS = 3000L
+
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MediaViewerScreen(
@@ -90,6 +98,13 @@ fun MediaViewerScreen(
 
     // Metadata bottom sheet state
     var showMetadataSheet by remember { mutableStateOf(false) }
+
+    // Keep the screen on while a slideshow is playing
+    val view = LocalView.current
+    DisposableEffect(uiState.isSlideshowPlaying) {
+        view.keepScreenOn = uiState.isSlideshowPlaying
+        onDispose { view.keepScreenOn = false }
+    }
 
     // Load metadata when sheet is shown
     LaunchedEffect(showMetadataSheet) {
@@ -152,6 +167,18 @@ fun MediaViewerScreen(
                                         MediaCache.updateNavigationPriorities(page, allKeys)
                                     }
                                 }
+                        }
+
+                        // Slideshow: advance every few seconds, wrapping around at the end
+                        LaunchedEffect(uiState.isSlideshowPlaying, pagerState.currentPage) {
+                            if (!uiState.isSlideshowPlaying) return@LaunchedEffect
+                            delay(SLIDESHOW_INTERVAL_MS)
+                            val next = pagerState.currentPage + 1
+                            if (next < uiState.items.size) {
+                                pagerState.animateScrollToPage(next)
+                            } else {
+                                pagerState.scrollToPage(0)
+                            }
                         }
 
                         HorizontalPager(
@@ -301,7 +328,10 @@ fun MediaViewerScreen(
                 .padding(bottom = toolbarBottomPadding)
         ) {
             MediaViewerFloatingToolbar(
-                isGalleryMode = uiState.mode == ViewerMode.GALLERY,
+                isGalleryMode = uiState.mode == ViewerMode.GALLERY && uiState.currentItem?.isPreview != true,
+                canSlideshow = uiState.mode == ViewerMode.GALLERY && uiState.totalCount > 1,
+                isSlideshowPlaying = uiState.isSlideshowPlaying,
+                onToggleSlideshow = { viewModel.setSlideshowPlaying(!uiState.isSlideshowPlaying) },
                 onDelete = { viewModel.deleteCurrentItem() },
                 onSave = { viewModel.saveCurrentItem() },
                 onShare = { viewModel.shareCurrentItem() },
@@ -346,6 +376,9 @@ fun MediaViewerScreen(
 @Composable
 private fun MediaViewerFloatingToolbar(
     isGalleryMode: Boolean,
+    canSlideshow: Boolean,
+    isSlideshowPlaying: Boolean,
+    onToggleSlideshow: () -> Unit,
     onDelete: () -> Unit,
     onSave: () -> Unit,
     onShare: () -> Unit,
@@ -375,6 +408,19 @@ private fun MediaViewerFloatingToolbar(
                             Icons.Default.Delete,
                             contentDescription = stringResource(R.string.media_viewer_delete),
                             tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
+                // Slideshow button (gallery mode with more than one item)
+                if (canSlideshow) {
+                    IconButton(onClick = onToggleSlideshow) {
+                        Icon(
+                            if (isSlideshowPlaying) Icons.Default.Pause else Icons.Default.Slideshow,
+                            contentDescription = stringResource(
+                                if (isSlideshowPlaying) R.string.media_viewer_slideshow_stop
+                                else R.string.media_viewer_slideshow_start
+                            )
                         )
                     }
                 }

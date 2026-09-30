@@ -621,4 +621,46 @@
 
     <!-- Metadata actions -->
     <string name="metadata_save_prompt">Zapisz prompt do biblioteki</string>
+    <string name="label_save_to_phone">Zapisuj wyniki w Zdjęciach</string>
+    <string name="desc_save_to_phone">Automatycznie zapisuj wygenerowane obrazy i filmy w Pictures/ComfyMobile i Movies/ComfyMobile</string>
+    <string name="gallery_view_grid_2">2 kolumny</string>
+    <string name="gallery_view_grid_3">3 kolumny</string>
+    <string name="gallery_view_grid_4">4 kolumny</string>
+    <string name="gallery_view_masonry">Oryginalne proporcje</string>
+    <string name="gallery_view_single">Jedna kolumna</string>
+    <string name="gallery_album_all">Wszystko</string>
+    <string name="gallery_new_album">Nowy album</string>
+    <string name="gallery_edit_album">Edytuj album</string>
+    <string name="gallery_add_to_album">Dodaj do albumu</string>
+    <string name="gallery_remove_from_album">Usuń z albumu</string>
+    <string name="gallery_album_name_hint">Nazwa albumu</string>
+    <string name="gallery_delete_album">Usuń album</string>
+    <string name="gallery_delete_album_note">Elementy pozostaną w galerii.</string>
+    <string name="gallery_button_create">Utwórz</string>
+    <string name="msg_added_to_album">Dodano do albumu</string>
+    <string name="msg_removed_from_album">Usunięto z albumu</string>
+    <string name="msg_album_empty">Ten album jest pusty</string>
+    <string name="button_import_from_comfyui">Importuj z ComfyUI</string>
+    <string name="title_comfyui_workflows">Przepływy ComfyUI</string>
+    <string name="error_comfyui_workflows">Nie udało się wczytać przepływów z serwera ComfyUI. Sprawdź połączenie.</string>
+    <string name="msg_comfyui_workflows_empty">Brak zapisanych przepływów w ComfyUI. Zapisz jeden w ComfyUI na komputerze (Workflow → Zapisz).</string>
+    <string name="login_subtitle">Połącz się ze swoim serwerem ComfyUI</string>
+    <string name="button_copy_settings">Kopiuj ustawienia</string>
+    <string name="msg_no_generation_info">Brak informacji o generowaniu dla tego obrazu</string>
+    <string name="msg_settings_copied">Ustawienia skopiowane</string>
+    <string name="label_more">Więcej</string>
+    <string name="label_optional">(opcjonalnie)</string>
+    <string name="status_connected">Połączono</string>
+    <string name="status_not_connected">Brak połączenia</string>
+    <string name="button_change_server">Zmień serwer</string>
+    <string name="label_kept_on_device">Zapisane na urządzeniu</string>
+    <string name="desc_kept_on_device">%1$d elementów, które zostają nawet po usunięciu z serwera</string>
+    <string name="button_connecting_cancel">Łączenie… (dotknij, aby anulować)</string>
+    <string name="msg_connection_cancelled">Anulowano łączenie</string>
+    <string name="button_start_offline">Uruchom offline</string>
+    <string name="gallery_select_all">Zaznacz wszystko</string>
+    <string name="gallery_deselect_all">Odznacz wszystko</string>
+    <string name="gallery_slideshow">Pokaz slajdów</string>
+    <string name="media_viewer_slideshow_start">Uruchom pokaz slajdów</string>
+    <string name="media_viewer_slideshow_stop">Zatrzymaj pokaz slajdów</string>
 </resources>

@@ -33,6 +33,24 @@ import sh.hnet.comfychair.ui.components.SettingsScreenScaffold
 import sh.hnet.comfychair.viewmodel.GpuInfo
 import sh.hnet.comfychair.viewmodel.SettingsEvent
 import sh.hnet.comfychair.viewmodel.SettingsViewModel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import sh.hnet.comfychair.connection.ConnectionManager
+import sh.hnet.comfychair.storage.ServerStorage
+import sh.hnet.comfychair.ui.components.generate.Brand
 
 @Composable
 fun ServerSettingsScreen(
@@ -58,12 +76,13 @@ fun ServerSettingsScreen(
         }
     }
 
-    // Event handling
+    // Event handling (on the one-page settings screen, the application section shows toasts)
+    val embedded = sh.hnet.comfychair.ui.components.LocalSettingsEmbedded.current
     LaunchedEffect(Unit) {
         viewModel.events.collect { event ->
             when (event) {
                 is SettingsEvent.ShowToast -> {
-                    Toast.makeText(context, event.messageResId, Toast.LENGTH_SHORT).show()
+                    if (!embedded) Toast.makeText(context, event.messageResId, Toast.LENGTH_SHORT).show()
                 }
                 is SettingsEvent.RefreshNeeded -> {
                     // Handled by SettingsContainerActivity
@@ -84,195 +103,129 @@ fun ServerSettingsScreen(
         onNavigateToGeneration = onNavigateToGeneration,
         onLogout = onLogout
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-            // Server Information Card
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                ) {
+        val serverName = remember(uiState.hostname) {
+            ConnectionManager.currentServerId?.let { ServerStorage(context).getServer(it)?.name }
+        }
+        val stats = uiState.systemStats
+        val shape = RoundedCornerShape(18.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(
+                    Brush.linearGradient(listOf(Color(0xFF182232), MaterialTheme.colorScheme.surfaceContainer))
+                )
+                .border(1.dp, Color(0xFF25324A), shape)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Name, address, status
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(serverName ?: uiState.hostname, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
                     Text(
-                        text = stringResource(R.string.title_server_info),
-                        style = MaterialTheme.typography.titleMedium
+                        "${uiState.hostname}:${uiState.port}",
+                        fontFamily = FontFamily.Monospace, fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Hostname
-                    Row {
-                        Text(
-                            text = stringResource(R.string.label_hostname),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = uiState.hostname,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Port
-                    Row {
-                        Text(
-                            text = stringResource(R.string.label_port),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = uiState.port.toString(),
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // System Stats (software versions only)
-                    if (uiState.isLoadingStats && uiState.systemStats == null) {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
-                    } else {
-                        uiState.systemStats?.let { stats ->
-                            Text(
-                                text = "${stringResource(R.string.label_server_info_os)} ${stats.os}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "${stringResource(R.string.label_server_info_comfyui)} ${stats.comfyuiVersion}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "${stringResource(R.string.label_server_info_python)} ${stats.pythonVersion}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                            Text(
-                                text = "${stringResource(R.string.label_server_info_pytorch)} ${stats.pytorchVersion}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    }
                 }
-            }
-
-            // RAM Usage Card
-            uiState.systemStats?.let { stats ->
-                if (stats.ramTotalGB > 0) {
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Card(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.title_ram_usage),
-                                style = MaterialTheme.typography.titleMedium
-                            )
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            val ramUsedGB = stats.ramTotalGB - stats.ramFreeGB
-                            val ramProgress = (ramUsedGB / stats.ramTotalGB).toFloat().coerceIn(0f, 1f)
-
-                            LinearProgressIndicator(
-                                progress = { ramProgress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(8.dp),
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text(
-                                text = stringResource(
-                                    R.string.resource_usage_format,
-                                    ramUsedGB,
-                                    stats.ramTotalGB
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                // GPU Cards
-                if (stats.gpus.isNotEmpty()) {
-                    stats.gpus.forEachIndexed { index, gpu ->
-                        key(gpu.name, index) {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            GpuUsageCard(
-                                gpu = gpu,
-                                index = index,
-                                showIndex = stats.gpus.size > 1
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Server Management Card
-            Card(
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
+                val ok = stats != null
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background((if (ok) Brand.Ok else MaterialTheme.colorScheme.error).copy(alpha = .14f))
+                        .padding(horizontal = 9.dp, vertical = 3.dp)
                 ) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (ok) Brand.Ok else MaterialTheme.colorScheme.error))
+                    Spacer(Modifier.width(6.dp))
                     Text(
-                        text = stringResource(R.string.title_server_management),
-                        style = MaterialTheme.typography.titleMedium
+                        stringResource(if (ok) R.string.status_connected else R.string.status_not_connected),
+                        fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
+                        color = if (ok) Brand.Ok else MaterialTheme.colorScheme.error
                     )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Refresh Models button
-                    Button(
-                        onClick = { viewModel.refreshServerData() },
-                        enabled = !uiState.isRefreshingModels,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        if (uiState.isRefreshingModels) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
-                        Text(stringResource(R.string.button_refresh_models))
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Clear History button
-                    Button(
-                        onClick = { viewModel.clearHistory() },
-                        enabled = !uiState.isClearingHistory,
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text(stringResource(R.string.button_clear_history))
-                    }
                 }
             }
 
-        // Bottom padding
-        Spacer(modifier = Modifier.height(16.dp))
+            if (uiState.isLoadingStats && stats == null) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally).size(24.dp))
+            }
+
+            // GPU / RAM meters side by side
+            if (stats != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    stats.gpus.forEachIndexed { i, gpu ->
+                        if (gpu.vramTotalGB > 0) {
+                            UsageMeter(
+                                label = if (stats.gpus.size > 1) "GPU $i" else "GPU",
+                                used = gpu.vramTotalGB - gpu.vramFreeGB,
+                                total = gpu.vramTotalGB,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    if (stats.ramTotalGB > 0) {
+                        UsageMeter("RAM", stats.ramTotalGB - stats.ramFreeGB, stats.ramTotalGB, Modifier.weight(1f))
+                    }
+                }
+                Text(
+                    listOfNotNull(
+                        stats.gpus.firstOrNull()?.name,
+                        "ComfyUI ${stats.comfyuiVersion}",
+                        "PyTorch ${stats.pytorchVersion.substringBefore('+')}",
+                        "Python ${stats.pythonVersion.substringBefore(' ')}"
+                    ).joinToString("  ·  "),
+                    fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Actions
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = onLogout, contentPadding = PaddingValues(horizontal = 10.dp)) {
+                    Text(stringResource(R.string.button_change_server), fontSize = 12.sp)
+                }
+                OutlinedButton(
+                    onClick = { viewModel.refreshServerData() },
+                    enabled = !uiState.isRefreshingModels,
+                    contentPadding = PaddingValues(horizontal = 10.dp)
+                ) {
+                    if (uiState.isRefreshingModels) {
+                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                    }
+                    Text(stringResource(R.string.button_refresh_models), fontSize = 12.sp)
+                }
+                TextButton(
+                    onClick = { viewModel.clearHistory() },
+                    enabled = !uiState.isClearingHistory,
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) {
+                    Text(stringResource(R.string.button_clear_history), fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+/** Label, used/total and a bar; turns orange above 80 %. */
+@Composable
+private fun UsageMeter(label: String, used: Double, total: Double, modifier: Modifier = Modifier) {
+    val ratio = (used / total).toFloat().coerceIn(0f, 1f)
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Row(Modifier.fillMaxWidth()) {
+            Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text("%.1f / %.0f GB".format(used, total), fontSize = 11.5.sp, fontFamily = FontFamily.Monospace)
+        }
+        LinearProgressIndicator(
+            progress = { ratio },
+            modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(6.dp)),
+            color = if (ratio > 0.8f) Color(0xFFFFB547) else Brand.Blue,
+            trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            drawStopIndicator = {}
+        )
     }
 }
 

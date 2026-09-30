@@ -621,4 +621,46 @@
 
     <!-- Metadata actions -->
     <string name="metadata_save_prompt">保存提示词到库</string>
+    <string name="label_save_to_phone">保存到相册</string>
+    <string name="desc_save_to_phone">自动将生成的图片和视频保存到 Pictures/ComfyMobile 和 Movies/ComfyMobile</string>
+    <string name="gallery_view_grid_2">2 列</string>
+    <string name="gallery_view_grid_3">3 列</string>
+    <string name="gallery_view_grid_4">4 列</string>
+    <string name="gallery_view_masonry">原始比例</string>
+    <string name="gallery_view_single">单列</string>
+    <string name="gallery_album_all">全部</string>
+    <string name="gallery_new_album">新建相册</string>
+    <string name="gallery_edit_album">编辑相册</string>
+    <string name="gallery_add_to_album">添加到相册</string>
+    <string name="gallery_remove_from_album">从相册移除</string>
+    <string name="gallery_album_name_hint">相册名称</string>
+    <string name="gallery_delete_album">删除相册</string>
+    <string name="gallery_delete_album_note">项目仍保留在图库中。</string>
+    <string name="gallery_button_create">创建</string>
+    <string name="msg_added_to_album">已添加到相册</string>
+    <string name="msg_removed_from_album">已从相册移除</string>
+    <string name="msg_album_empty">此相册为空</string>
+    <string name="button_import_from_comfyui">从 ComfyUI 导入</string>
+    <string name="title_comfyui_workflows">ComfyUI 工作流</string>
+    <string name="error_comfyui_workflows">无法从 ComfyUI 服务器加载工作流。请检查连接。</string>
+    <string name="msg_comfyui_workflows_empty">ComfyUI 中还没有保存的工作流。请在电脑上的 ComfyUI 中保存一个（Workflow → Save）。</string>
+    <string name="login_subtitle">连接到你的 ComfyUI 服务器</string>
+    <string name="button_copy_settings">复制设置</string>
+    <string name="msg_no_generation_info">此图片没有生成信息</string>
+    <string name="msg_settings_copied">已复制设置</string>
+    <string name="label_more">更多</string>
+    <string name="label_optional">（可选）</string>
+    <string name="status_connected">已连接</string>
+    <string name="status_not_connected">未连接</string>
+    <string name="button_change_server">更换服务器</string>
+    <string name="label_kept_on_device">保存在本机</string>
+    <string name="desc_kept_on_device">%1$d 项，即使服务器上删除也会保留</string>
+    <string name="button_connecting_cancel">正在连接…（点按取消）</string>
+    <string name="msg_connection_cancelled">已取消连接</string>
+    <string name="button_start_offline">离线启动</string>
+    <string name="gallery_select_all">全选</string>
+    <string name="gallery_deselect_all">取消全选</string>
+    <string name="gallery_slideshow">幻灯片</string>
+    <string name="media_viewer_slideshow_start">开始幻灯片</string>
+    <string name="media_viewer_slideshow_stop">停止幻灯片</string>
 </resources>

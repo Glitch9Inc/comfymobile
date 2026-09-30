@@ -1104,9 +1104,9 @@ class TextToImageViewModel : BaseGenerationViewModel<TextToImageUiState, TextToI
         val bitmap = _uiState.value.previewBitmap ?: run { onResult(false); return }
 
         val contentValues = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "ComfyChair_${System.currentTimeMillis()}.png")
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "ComfyMobile_${System.currentTimeMillis()}.png")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/png")
-            put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/ComfyChair")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/ComfyMobile")
         }
 
         val uri = ctx.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)

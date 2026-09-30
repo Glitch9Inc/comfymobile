@@ -12,10 +12,24 @@ android {
         applicationId = "sh.hnet.comfychair"
         minSdk = 33
         targetSdk = 36
-        versionCode = 39
+        // CI test builds count up so each one installs as an update
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.plus(1000) ?: 39
         versionName = "v0.8.12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        // Fixed key for CI test builds (from GitHub secrets), so updates install over the previous build
+        val devKeystore = System.getenv("DEV_KEYSTORE_FILE")
+        if (devKeystore != null && file(devKeystore).exists()) {
+            create("devRelease") {
+                storeFile = file(devKeystore)
+                storePassword = System.getenv("DEV_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("DEV_KEY_ALIAS")
+                keyPassword = System.getenv("DEV_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
@@ -26,6 +40,13 @@ android {
                 "proguard-rules.pro"
             )
             signingConfig = signingConfigs.getByName("debug")
+        }
+        // Small, shrunk test build for sideloading (CI publishes this)
+        create("dev") {
+            initWith(getByName("release"))
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.findByName("devRelease") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

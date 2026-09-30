@@ -10,6 +10,10 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.ime
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -64,6 +69,12 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import sh.hnet.comfychair.MediaViewerActivity
 import sh.hnet.comfychair.R
+import sh.hnet.comfychair.ui.components.generate.ratioOf
+import sh.hnet.comfychair.ui.components.generate.FitAspectBox
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.runtime.saveable.rememberSaveable
+import sh.hnet.comfychair.ui.components.shared.ResolutionPresetRow
 import sh.hnet.comfychair.WorkflowEditorActivity
 import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.model.ScreenType
@@ -86,6 +97,46 @@ import sh.hnet.comfychair.viewmodel.PromptPresetEvent
 import sh.hnet.comfychair.viewmodel.PromptPresetViewModel
 import sh.hnet.comfychair.viewmodel.TextToImageEvent
 import sh.hnet.comfychair.viewmodel.TextToImageViewModel
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import sh.hnet.comfychair.cache.MediaCache
+import sh.hnet.comfychair.storage.LocalGalleryStore
+import sh.hnet.comfychair.util.MetadataParser
+import sh.hnet.comfychair.util.PngMetadataExtractor
+import sh.hnet.comfychair.viewmodel.GalleryItem
+import sh.hnet.comfychair.viewmodel.MediaViewerItem
+import sh.hnet.comfychair.ui.components.generate.Brand
+import sh.hnet.comfychair.ui.components.generate.BatchTile
+import sh.hnet.comfychair.ui.components.generate.ChipRow
+import sh.hnet.comfychair.ui.components.generate.EditValueDialog
+import sh.hnet.comfychair.ui.components.generate.GenCard
+import sh.hnet.comfychair.ui.components.generate.MetaLine
+import sh.hnet.comfychair.ui.components.generate.ModeMenuButton
+import sh.hnet.comfychair.ui.components.generate.ModeTabs
+import sh.hnet.comfychair.ui.components.generate.OverlayChip
+import sh.hnet.comfychair.ui.components.generate.ParamTile
+import sh.hnet.comfychair.ui.components.generate.PickOptionDialog
+import sh.hnet.comfychair.ui.components.generate.PillChip
+import sh.hnet.comfychair.ui.components.generate.ProgressPill
+import sh.hnet.comfychair.ui.components.generate.RecentResultsStrip
+import sh.hnet.comfychair.ui.components.generate.SeedDialog
+import sh.hnet.comfychair.ui.components.generate.StatusDot
+import sh.hnet.comfychair.ui.components.generate.WorkflowChip
+import sh.hnet.comfychair.ui.components.generate.metaText
 
 /**
  * Text-to-Image generation screen
@@ -160,7 +211,7 @@ fun TextToImageScreen(
     var prevImeHeight by remember { mutableStateOf(imeHeight) }
     SideEffect { prevImeHeight = imeHeight }
     var promptFocused by remember { mutableStateOf(false) }
-    val expandPrompt = promptExpandEnabled && promptFocused && imeHeight > 0 && imeHeight >= prevImeHeight
+    val expandPrompt = promptFocused && imeHeight > 0 && imeHeight >= prevImeHeight
 
     // Fetch models when connected
     LaunchedEffect(connectionStatus) {
@@ -225,98 +276,200 @@ fun TextToImageScreen(
     // UI composition
     var showOptionsBottomSheet by remember { mutableStateOf(false) }
     val optionsSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        // Top App Bar with save/share actions (outside content Box)
-        TopAppBar(
-            title = { Text(stringResource(R.string.nav_text_to_image)) },
-            windowInsets = WindowInsets(0, 0, 0, 0),
-            actions = {
-                // Save to gallery button (only when image exists)
-                if (uiState.previewBitmap != null) {
-                    IconButton(onClick = {
-                        textToImageViewModel.saveToGallery { success ->
-                            val messageRes = if (success) R.string.msg_image_saved_to_gallery else R.string.error_save_image
-                            Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
-                        }
-                    }) {
-                        Icon(Icons.Default.Save, contentDescription = stringResource(R.string.button_save_to_gallery))
-                    }
-                    // Share button
-                    IconButton(onClick = {
-                        textToImageViewModel.getShareIntent()?.let { intent ->
-                            context.startActivity(android.content.Intent.createChooser(intent, context.getString(R.string.share_image)))
-                        }
-                    }) {
-                        Icon(Icons.Default.Share, contentDescription = stringResource(R.string.button_share))
-                    }
+    // Settings (shared by the options sheet and the wide-screen side panel)
+    val callbacks = remember(textToImageViewModel) {
+        UnifiedCallbacks(
+            onWorkflowChange = textToImageViewModel::onWorkflowChange,
+            onViewWorkflow = {
+                val workflowId = textToImageViewModel.uiState.value.availableWorkflows
+                    .find { it.name == textToImageViewModel.uiState.value.selectedWorkflow }?.id
+                if (workflowId != null) {
+                    context.startActivity(WorkflowEditorActivity.createIntent(context, workflowId))
                 }
-                // Menu button
-                AppMenuDropdown(
-                    onSettings = onNavigateToSettings,
-                    onLogout = onLogout
-                )
-            }
+            },
+            onNegativePromptChange = textToImageViewModel::onNegativePromptChange,
+            onCheckpointChange = textToImageViewModel::onCheckpointChange,
+            onUnetChange = textToImageViewModel::onUnetChange,
+            onVaeChange = textToImageViewModel::onVaeChange,
+            onClipChange = textToImageViewModel::onClipChange,
+            onClip1Change = textToImageViewModel::onClip1Change,
+            onClip2Change = textToImageViewModel::onClip2Change,
+            onClip3Change = textToImageViewModel::onClip3Change,
+            onClip4Change = textToImageViewModel::onClip4Change,
+            onTextEncoderChange = textToImageViewModel::onTextEncoderChange,
+            onLatentUpscaleModelChange = textToImageViewModel::onLatentUpscaleModelChange,
+            onMandatoryLoraChange = textToImageViewModel::onMandatoryLoraChange,
+            onWidthChange = textToImageViewModel::onWidthChange,
+            onHeightChange = textToImageViewModel::onHeightChange,
+            onStepsChange = textToImageViewModel::onStepsChange,
+            onCfgChange = textToImageViewModel::onCfgChange,
+            onSamplerChange = textToImageViewModel::onSamplerChange,
+            onSchedulerChange = textToImageViewModel::onSchedulerChange,
+            onRandomSeedToggle = textToImageViewModel::onRandomSeedToggle,
+            onSeedChange = textToImageViewModel::onSeedChange,
+            onRandomizeSeed = textToImageViewModel::onRandomizeSeed,
+            onDenoiseChange = textToImageViewModel::onDenoiseChange,
+            onBatchSizeChange = textToImageViewModel::onBatchSizeChange,
+            onUpscaleMethodChange = textToImageViewModel::onUpscaleMethodChange,
+            onScaleByChange = textToImageViewModel::onScaleByChange,
+            onStopAtClipLayerChange = textToImageViewModel::onStopAtClipLayerChange,
+            onAddLora = textToImageViewModel::onAddLora,
+            onRemoveLora = textToImageViewModel::onRemoveLora,
+            onLoraNameChange = textToImageViewModel::onLoraNameChange,
+            onLoraStrengthChange = textToImageViewModel::onLoraStrengthChange
         )
+    }
+    val bottomSheetConfig = remember(uiState, callbacks) { uiState.toBottomSheetConfig(callbacks) }
 
-        // Progress indicator - below app bar, only show if THIS screen's job is executing
-        if (isThisScreenExecuting) {
-            GenerationProgressBar(
-                progress = generationState.progress,
-                maxProgress = generationState.maxProgress,
-                modifier = Modifier.fillMaxWidth()
+    // Which recent result is shown in the preview (null = latest generation)
+    var selectedRecent by remember { mutableStateOf<GalleryItem?>(null) }
+
+    // Wide layout: settings card collapsed by default
+
+    // Small edit dialogs for the parameter tiles
+    var editParam by remember { mutableStateOf<String?>(null) }
+
+    fun generate(front: Boolean) {
+        if (!textToImageViewModel.hasValidConfiguration()) return
+        val workflowJson = textToImageViewModel.prepareWorkflowJson()
+        if (workflowJson == null) {
+            Toast.makeText(context, context.getString(R.string.error_failed_load_workflow), Toast.LENGTH_SHORT).show()
+            return
+        }
+        selectedRecent = null
+        generationViewModel.startGeneration(workflowJson, TextToImageViewModel.OWNER_ID, front = front) { success, _, errorMessage ->
+            if (!success) {
+                Toast.makeText(context, errorMessage ?: context.getString(R.string.error_generation_failed), Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun showRecent(item: GalleryItem) {
+        if (item.isVideo) {
+            context.startActivity(
+                MediaViewerActivity.createPreviewIntent(
+                    context = context,
+                    hostname = generationViewModel.getHostname(),
+                    port = generationViewModel.getPort(),
+                    bitmap = null,
+                    filename = item.filename,
+                    subfolder = item.subfolder,
+                    type = item.type
+                )
+            )
+            return
+        }
+        selectedRecent = item
+        scope.launch {
+            MediaCache.fetchImage(item.toCacheKey(), item.subfolder, item.type)?.let {
+                textToImageViewModel.onPreviewBitmapChange(it)
+            }
+        }
+    }
+
+    // "Copy settings": load the generation record of the shown image back into the form
+    fun copySettings() {
+        scope.launch {
+            val meta = withContext(Dispatchers.IO) {
+                val serverId = ConnectionManager.currentServerId
+                val item = selectedRecent
+                val json: String? = if (item != null) {
+                    LocalGalleryStore.localFile(context, serverId, item.toCacheKey())
+                        ?.let { PngMetadataExtractor.extractPromptMetadata(it.readBytes()) }
+                        ?: LocalGalleryStore.loadGenerationRecord(context, serverId, item.promptId)
+                } else {
+                    val name = uiState.currentImageFilename
+                    val client = ConnectionManager.clientOrNull
+                    if (name != null && client != null) {
+                        kotlin.coroutines.suspendCoroutine { cont ->
+                            client.fetchRawBytes(name, uiState.currentImageSubfolder ?: "", uiState.currentImageType ?: "output") { b, _ ->
+                                cont.resumeWith(Result.success(b?.let { PngMetadataExtractor.extractPromptMetadata(it) }))
+                            }
+                        }
+                    } else null
+                }
+                json?.let { MetadataParser.parseWorkflowJson(it) }
+            }
+            if (meta == null) {
+                Toast.makeText(context, R.string.msg_no_generation_info, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            meta.positivePrompt?.let { textToImageViewModel.onPositivePromptChange(it) }
+            meta.negativePrompt?.let { textToImageViewModel.onNegativePromptChange(it) }
+            meta.steps?.let { textToImageViewModel.onStepsChange(it.toString()) }
+            meta.cfg?.let { textToImageViewModel.onCfgChange(it.toString()) }
+            meta.sampler?.let { textToImageViewModel.onSamplerChange(it) }
+            meta.seed?.let {
+                if (textToImageViewModel.uiState.value.randomSeed) textToImageViewModel.onRandomSeedToggle()
+                textToImageViewModel.onSeedChange(it.toString())
+            }
+            Toast.makeText(context, R.string.msg_settings_copied, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val caps = uiState.capabilities
+    val connected = connectionStatus == ConnectionStatus.CONNECTED
+    val progressVisible = isThisScreenExecuting && generationState.maxProgress > 0 && generationState.progress > 0
+
+    // ---------- Pieces ----------
+
+    val serverMenu: @Composable () -> Unit = {
+        Box {
+            AppMenuDropdown(onSettings = onNavigateToSettings, onLogout = onLogout)
+            StatusDot(connected, Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp))
+        }
+    }
+
+    val workflowChip: @Composable (Modifier) -> Unit = { m ->
+        WorkflowChip(
+            workflows = uiState.availableWorkflows.map { it.name },
+            selected = uiState.selectedWorkflow,
+            onSelect = textToImageViewModel::onWorkflowChange,
+            modifier = m
+        )
+    }
+
+    // Always shown; greyed out until there is an image
+    val imageActions: @Composable () -> Unit = {
+        val hasImage = uiState.previewBitmap != null
+        run {
+            OverlayChip(stringResource(R.string.button_save), enabled = hasImage) {
+                textToImageViewModel.saveToGallery { success ->
+                    val messageRes = if (success) R.string.msg_image_saved_to_gallery else R.string.error_save_image
+                    Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
+                }
+            }
+            OverlayChip(stringResource(R.string.button_share), enabled = hasImage) {
+                textToImageViewModel.getShareIntent()?.let { intent ->
+                    context.startActivity(android.content.Intent.createChooser(intent, context.getString(R.string.share_image)))
+                }
+            }
+            OverlayChip(stringResource(R.string.button_copy_settings), enabled = hasImage) { copySettings() }
+        }
+    }
+
+    // Opens the preview full screen; swipe to move through the gallery.
+    // While generating, the preview is a live image, so it is not matched to a gallery item.
+    val openPreviewViewer: () -> Unit = {
+        uiState.previewBitmap?.let { bitmap ->
+            val live = isThisScreenExecuting && selectedRecent == null
+            context.startActivity(
+                MediaViewerActivity.createPreviewIntent(
+                    context = context,
+                    hostname = generationViewModel.getHostname(),
+                    port = generationViewModel.getPort(),
+                    bitmap = bitmap,
+                    filename = if (live) null else selectedRecent?.filename ?: uiState.currentImageFilename,
+                    subfolder = if (live) null else selectedRecent?.subfolder ?: uiState.currentImageSubfolder,
+                    type = selectedRecent?.type ?: uiState.currentImageType
+                )
             )
         }
+    }
 
-        // Image Preview Area — collapses when typing in the prompt field
-        AnimatedVisibility(
-            visible = !expandPrompt,
-            modifier = Modifier.weight(1f),
-            enter = fadeIn(tween(150)),
-            exit = ExitTransition.None
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .heightIn(min = 150.dp)
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .clickable(enabled = uiState.previewBitmap != null && !isThisScreenExecuting) {
-                        // Launch MediaViewer for single image
-                        uiState.previewBitmap?.let { bitmap ->
-                            val intent = MediaViewerActivity.createSingleImageIntent(
-                                context = context,
-                                bitmap = bitmap,
-                                hostname = generationViewModel.getHostname(),
-                                port = generationViewModel.getPort(),
-                                filename = uiState.currentImageFilename,
-                                subfolder = uiState.currentImageSubfolder,
-                                type = uiState.currentImageType
-                            )
-                            context.startActivity(intent)
-                        }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                if (uiState.previewBitmap != null) {
-                    Image(
-                        bitmap = uiState.previewBitmap!!.asImageBitmap(),
-                        contentDescription = stringResource(R.string.content_description_generated_image),
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    // Placeholder - app logo
-                    Image(
-                        painter = painterResource(R.drawable.ic_comfychair_foreground),
-                        contentDescription = null,
-                        modifier = Modifier.size(Dimensions.PlaceholderLogoSize),
-                        contentScale = ContentScale.Fit
-                    )
-                }
-            }
-        }
-
-        // Prompt Input — expands to fill screen above keyboard when focused
+    val promptField: @Composable (Modifier, Boolean) -> Unit = { m, fill ->
         OutlinedTextField(
             value = uiState.positivePrompt,
             onValueChange = {
@@ -324,13 +477,9 @@ fun TextToImageScreen(
                 presetViewModel.clearActivePreset()
             },
             label = { Text(stringResource(R.string.hint_prompt)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (expandPrompt) Modifier.weight(1f) else Modifier)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .onFocusChanged { promptFocused = it.isFocused },
-            minLines = 2,
-            maxLines = if (expandPrompt) Int.MAX_VALUE else 4,
+            modifier = m.onFocusChanged { promptFocused = it.isFocused },
+            minLines = 3,
+            maxLines = if (fill) Int.MAX_VALUE else 4,
             keyboardOptions = KeyboardOptions(autoCorrectEnabled = spellCheckEnabled),
             visualTransformation = positivePromptTransformation,
             leadingIcon = {
@@ -352,14 +501,84 @@ fun TextToImageScreen(
                 }
             }
         )
+    }
 
-        // Generate and Options buttons
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 16.dp)
-        ) {
+    val negativeLine: @Composable () -> Unit = {
+        if (caps.hasNegativePrompt) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+            ) {
+                Text("NEG", color = Brand.NegRed, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                Spacer(Modifier.width(8.dp))
+                BasicTextField(
+                    value = uiState.negativePrompt,
+                    onValueChange = textToImageViewModel::onNegativePromptChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.weight(1f).padding(vertical = 6.dp)
+                )
+            }
+        }
+    }
+
+    val favoritesRow: @Composable () -> Unit = {
+        if (presetUiState.favorites.isNotEmpty()) {
+            ChipRow {
+                presetUiState.favorites.forEach { preset ->
+                    PillChip(preset.name, onClick = { presetViewModel.onPresetSelected(preset.id) }, leading = "★")
+                }
+            }
+        }
+    }
+
+    val ratioRow: @Composable () -> Unit = {
+        if (caps.hasWidth && caps.hasHeight) {
+            ResolutionPresetRow(
+                width = uiState.width,
+                height = uiState.height,
+                onSelect = { w, h ->
+                    textToImageViewModel.onWidthChange(w.toString())
+                    textToImageViewModel.onHeightChange(h.toString())
+                }
+            )
+        }
+    }
+
+    val paramsRow: @Composable () -> Unit = {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            if (caps.hasSteps) ParamTile(stringResource(R.string.label_steps), uiState.steps, { editParam = "steps" }, Modifier.weight(1f))
+            if (caps.hasCfg) ParamTile(stringResource(R.string.label_cfg), uiState.cfg, { editParam = "cfg" }, Modifier.weight(1f))
+            if (caps.hasSeed) ParamTile(
+                stringResource(R.string.label_seed),
+                if (uiState.randomSeed) "🎲" else uiState.seed,
+                { editParam = "seed" }, Modifier.weight(1f)
+            )
+            if (caps.hasSamplerName) ParamTile(stringResource(R.string.label_sampler), uiState.sampler, { editParam = "sampler" }, Modifier.weight(1f))
+            ParamTile(stringResource(R.string.label_more), "⋯", { showOptionsBottomSheet = true }, Modifier.weight(0.8f))
+        }
+    }
+
+    val loraRow: @Composable () -> Unit = {
+        if (caps.hasLora) {
+            ChipRow {
+                uiState.loraChain.forEach { lora ->
+                    PillChip(
+                        "${lora.name.substringAfterLast('/').substringBeforeLast('.')}  ${"%.1f".format(lora.strength)}",
+                        onClick = { showOptionsBottomSheet = true }, accent = true
+                    )
+                }
+                PillChip("+ LoRA", onClick = {
+                    textToImageViewModel.onAddLora()
+                    showOptionsBottomSheet = true
+                }, dashed = true)
+            }
+        }
+    }
+
+    val generateRow: @Composable () -> Unit = {
+        Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GenerationButton(
                 queueSize = queueState.totalQueueSize,
                 isExecuting = queueState.isExecuting,
@@ -367,62 +586,12 @@ fun TextToImageScreen(
                 isOfflineMode = isOfflineMode,
                 isFetching = uiState.isFetching,
                 isConnecting = isConnecting,
-                onGenerate = {
-                    if (textToImageViewModel.hasValidConfiguration()) {
-                        val workflowJson = textToImageViewModel.prepareWorkflowJson()
-                        if (workflowJson != null) {
-                            generationViewModel.startGeneration(
-                                workflowJson,
-                                TextToImageViewModel.OWNER_ID
-                            ) { success, _, errorMessage ->
-                                if (!success) {
-                                    Toast.makeText(
-                                        context,
-                                        errorMessage ?: context.getString(R.string.error_generation_failed),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            }
-                        } else {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.error_failed_load_workflow),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                },
+                onGenerate = { generate(front = false) },
                 onCancelCurrent = { generationViewModel.cancelGeneration { } },
-                onAddToFrontOfQueue = {
-                    if (textToImageViewModel.hasValidConfiguration()) {
-                        val workflowJson = textToImageViewModel.prepareWorkflowJson()
-                        if (workflowJson != null) {
-                            generationViewModel.startGeneration(
-                                workflowJson,
-                                TextToImageViewModel.OWNER_ID,
-                                front = true
-                            ) { success, _, errorMessage ->
-                                if (!success) {
-                                    Toast.makeText(
-                                        context,
-                                        errorMessage ?: context.getString(R.string.error_generation_failed),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            }
-                        } else {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.error_failed_load_workflow),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                },
+                onAddToFrontOfQueue = { generate(front = true) },
                 onClearQueue = {
                     generationViewModel.getClient()?.clearQueue { success ->
-                        val messageRes = if (success) R.string.msg_queue_cleared_success
-                                       else R.string.error_queue_clear
+                        val messageRes = if (success) R.string.msg_queue_cleared_success else R.string.error_queue_clear
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
                         }
@@ -430,82 +599,216 @@ fun TextToImageScreen(
                 },
                 modifier = Modifier.weight(1f)
             )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Animate gear icon rotation when options sheet is shown
-            val optionsIconRotation by animateFloatAsState(
-                targetValue = if (showOptionsBottomSheet) 90f else 0f,
-                label = "options icon rotation"
-            )
-
+            if (caps.hasBatchSize) {
+                BatchTile(uiState.batchSize, textToImageViewModel::onBatchSizeChange, Modifier.fillMaxHeight())
+            }
+            // All workflow settings (models, LoRA, sampler, ...) in the options sheet
             OutlinedIconButton(
                 onClick = { showOptionsBottomSheet = true },
                 modifier = Modifier.size(56.dp)
             ) {
-                Icon(
-                    Icons.Default.Settings,
-                    contentDescription = stringResource(R.string.button_options),
-                    modifier = Modifier.rotate(optionsIconRotation)
-                )
+                Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.button_options))
             }
         }
-    } // End of outer Column
+    }
 
-    // Options Bottom Sheet
+    // Preview card shape: the selected resolution (falls back to the shown image, then square)
+    val previewRatio = (if (caps.hasWidth && caps.hasHeight) ratioOf(uiState.width, uiState.height) else null)
+        ?: uiState.previewBitmap?.let { it.width.toFloat() / it.height }
+        ?: 1f
+
+    val metaInfo = metaText(uiState.previewBitmap, if (uiState.randomSeed) null else uiState.seed, uiState.selectedWorkflow.ifEmpty { null })
+
+    // ---------- Layout ----------
+
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val isWide = maxWidth >= 600.dp
+
+        if (!isWide) {
+            // ===== Phone (folded) =====
+            Column(Modifier.fillMaxSize()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 8.dp)
+                ) {
+                    workflowChip(Modifier.weight(1f, fill = false))
+                    Spacer(Modifier.weight(1f))
+                    ModeMenuButton()
+                    serverMenu()
+                }
+
+                Column(
+                    modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    if (!expandPrompt) {
+                        // Preview with overlays; its shape follows the selected resolution
+                        FitAspectBox(
+                            ratio = previewRatio,
+                            modifier = Modifier.weight(1f).fillMaxWidth().heightIn(min = 120.dp)
+                        ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainer)
+                                .clickable(enabled = uiState.previewBitmap != null) { openPreviewViewer() }
+                        ) {
+                            uiState.previewBitmap?.let { bmp ->
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = stringResource(R.string.content_description_generated_image),
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                            ProgressPill(generationState.progress, generationState.maxProgress, Modifier.align(Alignment.TopStart).padding(10.dp), active = progressVisible)
+                            Row(
+                                Modifier.align(Alignment.TopEnd).padding(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) { imageActions() }
+                            if (uiState.previewBitmap != null && metaInfo.isNotEmpty()) {
+                                MetaLine(metaInfo, Modifier.align(Alignment.BottomStart).padding(10.dp))
+                            }
+                        }
+                        }
+
+                        RecentResultsStrip(
+                            selectedKey = selectedRecent?.toCacheKey()?.keyString,
+                            onSelect = { showRecent(it) }
+                        )
+                    }
+
+                    GenCard(if (expandPrompt) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth()) {
+                        Column((if (expandPrompt) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                            promptField(
+                                if (expandPrompt) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth(),
+                                expandPrompt
+                            )
+                            negativeLine()
+                        }
+                    }
+
+                    if (!expandPrompt) {
+                        favoritesRow()
+                        ratioRow()
+                        paramsRow()
+                        loraRow()
+                    }
+                    generateRow()
+                }
+            }
+        } else {
+            // ===== Wide (unfolded) =====
+            Row(
+                Modifier.fillMaxSize().padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Left: modes, image actions, image (keeps ratio), info + recent results
+                GenCard(Modifier.weight(1f).fillMaxHeight()) {
+                    Column(Modifier.fillMaxSize()) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(14.dp)
+                        ) {
+                            Text(
+                                buildAnnotatedString {
+                                    withStyle(SpanStyle(color = Brand.Lime)) { append("C") }
+                                    withStyle(SpanStyle(color = Brand.Blue)) { append("M") }
+                                },
+                                fontWeight = FontWeight.ExtraBold, fontSize = 18.sp
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            ModeTabs(Modifier.weight(1f))
+                        }
+                        HorizontalDivider()
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth().height(58.dp).padding(horizontal = 14.dp)
+                        ) {
+                            ProgressPill(generationState.progress, generationState.maxProgress, translucent = false, active = progressVisible)
+                            Spacer(Modifier.weight(1f))
+                            imageActions()
+                        }
+                        FitAspectBox(
+                            ratio = previewRatio,
+                            modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 14.dp),
+                            boxModifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.background)
+                                .clickable(enabled = uiState.previewBitmap != null) { openPreviewViewer() }
+                        ) {
+                            uiState.previewBitmap?.let { bmp ->
+                                Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = stringResource(R.string.content_description_generated_image),
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+                        Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (metaInfo.isNotEmpty() && uiState.previewBitmap != null) {
+                                Text(metaInfo, fontFamily = FontFamily.Monospace, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            RecentResultsStrip(
+                                selectedKey = selectedRecent?.toCacheKey()?.keyString,
+                                onSelect = { showRecent(it) }
+                            )
+                        }
+                    }
+                }
+
+                // Right: workflow, prompt, all settings, ratio, generate
+                Column(
+                    Modifier.weight(0.85f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        workflowChip(Modifier.weight(1f))
+                        serverMenu()
+                    }
+                    GenCard(Modifier.fillMaxWidth().weight(1f)) {
+                        Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp)) {
+                            promptField(Modifier.fillMaxWidth().weight(1f), true)
+                            negativeLine()
+                        }
+                    }
+                    // While typing, keep only the prompt + generate so the keyboard never hides the field
+                    if (!expandPrompt) {
+                        favoritesRow()
+                        ratioRow()
+                        paramsRow()
+                        loraRow()
+                    }
+                    generateRow()
+                }
+            }
+        }
+    }
+
+    // Parameter edit dialogs
+    when (editParam) {
+        "steps" -> EditValueDialog(stringResource(R.string.label_steps), uiState.steps, true,
+            { textToImageViewModel.onStepsChange(it); editParam = null }, { editParam = null })
+        "cfg" -> EditValueDialog(stringResource(R.string.label_cfg), uiState.cfg, true,
+            { textToImageViewModel.onCfgChange(it); editParam = null }, { editParam = null })
+        "seed" -> SeedDialog(uiState.randomSeed, uiState.seed,
+            onRandomToggle = textToImageViewModel::onRandomSeedToggle,
+            onSeedChange = textToImageViewModel::onSeedChange,
+            onDismiss = { editParam = null })
+        "sampler" -> PickOptionDialog(stringResource(R.string.label_sampler), uiState.availableSamplers, uiState.sampler,
+            { textToImageViewModel.onSamplerChange(it); editParam = null }, { editParam = null })
+    }
+
     if (showOptionsBottomSheet) {
         ModalBottomSheet(
             onDismissRequest = { showOptionsBottomSheet = false },
             sheetState = optionsSheetState,
-            contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+            contentWindowInsets = { WindowInsets.safeDrawing }
         ) {
-            val callbacks = remember(textToImageViewModel) {
-                UnifiedCallbacks(
-                    onWorkflowChange = textToImageViewModel::onWorkflowChange,
-                    onViewWorkflow = {
-                        val workflowId = uiState.availableWorkflows
-                            .find { it.name == uiState.selectedWorkflow }?.id
-                        if (workflowId != null) {
-                            context.startActivity(
-                                WorkflowEditorActivity.createIntent(context, workflowId)
-                            )
-                        }
-                    },
-                    onNegativePromptChange = textToImageViewModel::onNegativePromptChange,
-                    onCheckpointChange = textToImageViewModel::onCheckpointChange,
-                    onUnetChange = textToImageViewModel::onUnetChange,
-                    onVaeChange = textToImageViewModel::onVaeChange,
-                    onClipChange = textToImageViewModel::onClipChange,
-                    onClip1Change = textToImageViewModel::onClip1Change,
-                    onClip2Change = textToImageViewModel::onClip2Change,
-                    onClip3Change = textToImageViewModel::onClip3Change,
-                    onClip4Change = textToImageViewModel::onClip4Change,
-                    onTextEncoderChange = textToImageViewModel::onTextEncoderChange,
-                    onLatentUpscaleModelChange = textToImageViewModel::onLatentUpscaleModelChange,
-                    onMandatoryLoraChange = textToImageViewModel::onMandatoryLoraChange,
-                    onWidthChange = textToImageViewModel::onWidthChange,
-                    onHeightChange = textToImageViewModel::onHeightChange,
-                    onStepsChange = textToImageViewModel::onStepsChange,
-                    onCfgChange = textToImageViewModel::onCfgChange,
-                    onSamplerChange = textToImageViewModel::onSamplerChange,
-                    onSchedulerChange = textToImageViewModel::onSchedulerChange,
-                    onRandomSeedToggle = textToImageViewModel::onRandomSeedToggle,
-                    onSeedChange = textToImageViewModel::onSeedChange,
-                    onRandomizeSeed = textToImageViewModel::onRandomizeSeed,
-                    onDenoiseChange = textToImageViewModel::onDenoiseChange,
-                    onBatchSizeChange = textToImageViewModel::onBatchSizeChange,
-                    onUpscaleMethodChange = textToImageViewModel::onUpscaleMethodChange,
-                    onScaleByChange = textToImageViewModel::onScaleByChange,
-                    onStopAtClipLayerChange = textToImageViewModel::onStopAtClipLayerChange,
-                    onAddLora = textToImageViewModel::onAddLora,
-                    onRemoveLora = textToImageViewModel::onRemoveLora,
-                    onLoraNameChange = textToImageViewModel::onLoraNameChange,
-                    onLoraStrengthChange = textToImageViewModel::onLoraStrengthChange
-                )
-            }
-            val bottomSheetConfig = remember(uiState, callbacks) {
-                uiState.toBottomSheetConfig(callbacks)
-            }
             ConfigBottomSheetContent(
                 config = bottomSheetConfig,
                 workflowName = uiState.selectedWorkflow,

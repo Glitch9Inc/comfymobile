@@ -49,12 +49,13 @@ fun AboutSettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(32.dp))
 
-            // App Logo (300dp)
+            // App Logo
             Image(
-                painter = painterResource(id = R.drawable.ic_comfychair_foreground),
+                painter = painterResource(id = R.drawable.logo_cm),
                 contentDescription = stringResource(R.string.app_name),
-                modifier = Modifier.size(300.dp)
+                modifier = Modifier.size(160.dp)
             )
+            Spacer(modifier = Modifier.height(24.dp))
 
             // App Name
             Text(

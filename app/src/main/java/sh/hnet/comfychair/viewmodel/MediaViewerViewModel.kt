@@ -26,6 +26,7 @@ import sh.hnet.comfychair.cache.MediaCache
 import sh.hnet.comfychair.cache.MediaCacheKey
 import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.repository.GalleryRepository
+import sh.hnet.comfychair.storage.LocalGalleryStore
 import sh.hnet.comfychair.util.GenerationMetadata
 import sh.hnet.comfychair.util.MetadataParser
 import sh.hnet.comfychair.util.Mp4MetadataExtractor
@@ -54,6 +55,10 @@ data class MediaViewerItem(
     val isVideo: Boolean,
     val index: Int = 0
 ) {
+    /** Not a gallery item: an image handed over from a generation screen's preview */
+    val isPreview: Boolean
+        get() = promptId == PREVIEW_PROMPT_ID
+
     fun toJson(): JSONObject {
         return JSONObject().apply {
             put("promptId", promptId)
@@ -66,6 +71,8 @@ data class MediaViewerItem(
     }
 
     companion object {
+        const val PREVIEW_PROMPT_ID = "__preview__"
+
         fun fromJson(json: JSONObject): MediaViewerItem {
             return MediaViewerItem(
                 promptId = json.optString("promptId", ""),
@@ -108,7 +115,8 @@ data class MediaViewerUiState(
     val isUiVisible: Boolean = true,
     val isLoading: Boolean = false,
     val currentBitmap: Bitmap? = null,
-    val currentVideoUri: Uri? = null
+    val currentVideoUri: Uri? = null,
+    val isSlideshowPlaying: Boolean = false
 ) {
     val currentItem: MediaViewerItem?
         get() = items.getOrNull(currentIndex)
@@ -165,17 +173,21 @@ class MediaViewerViewModel : ViewModel() {
         items: List<MediaViewerItem>,
         initialIndex: Int,
         singleBitmap: Bitmap? = null,
-        singleVideoUri: Uri? = null
+        singleVideoUri: Uri? = null,
+        startSlideshow: Boolean = false
     ) {
         applicationContext = context.applicationContext
 
+        val slideshow = startSlideshow && mode == ViewerMode.GALLERY && items.size > 1
         _uiState.value = MediaViewerUiState(
             mode = mode,
             items = items,
             currentIndex = initialIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0)),
             currentBitmap = singleBitmap,
             currentVideoUri = singleVideoUri,
-            isLoading = mode == ViewerMode.GALLERY && items.isNotEmpty()
+            isLoading = mode == ViewerMode.GALLERY && items.isNotEmpty(),
+            isSlideshowPlaying = slideshow,
+            isUiVisible = !slideshow
         )
 
         // For gallery mode, set up priorities and load current item
@@ -189,7 +201,20 @@ class MediaViewerViewModel : ViewModel() {
     }
 
     fun toggleUiVisibility() {
-        _uiState.value = _uiState.value.copy(isUiVisible = !_uiState.value.isUiVisible)
+        val state = _uiState.value
+        if (state.isSlideshowPlaying) {
+            // Tapping during a slideshow stops it and brings the controls back
+            _uiState.value = state.copy(isSlideshowPlaying = false, isUiVisible = true)
+            return
+        }
+        _uiState.value = state.copy(isUiVisible = !state.isUiVisible)
+    }
+
+    /** Start (hides the controls) or stop the slideshow. */
+    fun setSlideshowPlaying(playing: Boolean) {
+        val state = _uiState.value
+        if (playing && (state.mode != ViewerMode.GALLERY || state.items.size < 2)) return
+        _uiState.value = state.copy(isSlideshowPlaying = playing, isUiVisible = !playing)
     }
 
     fun setCurrentIndex(index: Int) {
@@ -415,6 +440,10 @@ class MediaViewerViewModel : ViewModel() {
                         null
                     }
                 }
+                // Permanent on-device copy
+                LocalGalleryStore.localFile(context, ConnectionManager.currentServerId, MediaCacheKey(item.promptId, item.filename)) != null -> {
+                    LocalGalleryStore.localFile(context, ConnectionManager.currentServerId, MediaCacheKey(item.promptId, item.filename))?.readBytes()
+                }
                 // For items with server file info and a client, fetch from server
                 item.filename.isNotEmpty() && ConnectionManager.clientOrNull != null -> {
                     kotlin.coroutines.suspendCoroutine { continuation ->
@@ -427,14 +456,18 @@ class MediaViewerViewModel : ViewModel() {
                 else -> null
             }
 
-            if (bytes == null) return@withContext null
+            // Saved generation record (survives ComfyUI restarts)
+            val savedRecord = LocalGalleryStore.loadGenerationRecord(
+                context, ConnectionManager.currentServerId, item.promptId
+            )
 
-            // Extract metadata based on file type
-            val jsonString = if (item.isVideo) {
-                Mp4MetadataExtractor.extractPromptMetadata(bytes)
-            } else {
-                PngMetadataExtractor.extractPromptMetadata(bytes)
-            }
+            if (bytes == null && savedRecord == null) return@withContext null
+
+            // Extract metadata based on file type, falling back to the saved record
+            val jsonString = bytes?.let {
+                if (item.isVideo) Mp4MetadataExtractor.extractPromptMetadata(it)
+                else PngMetadataExtractor.extractPromptMetadata(it)
+            } ?: savedRecord
 
             // Parse the workflow JSON
             jsonString?.let { MetadataParser.parseWorkflowJson(it) }
@@ -478,6 +511,7 @@ class MediaViewerViewModel : ViewModel() {
     fun deleteCurrentItem() {
         val state = _uiState.value
         val item = state.currentItem ?: return
+        if (item.isPreview) return
         val client = ConnectionManager.clientOrNull ?: return
 
         viewModelScope.launch {
@@ -547,7 +581,7 @@ class MediaViewerViewModel : ViewModel() {
         val state = _uiState.value
 
         viewModelScope.launch {
-            if (state.mode == ViewerMode.SINGLE) {
+            if (state.mode == ViewerMode.SINGLE || state.currentItem?.isPreview == true) {
                 // Save from current bitmap/video
                 if (state.currentItem?.isVideo == true || state.currentVideoUri != null) {
                     saveVideoFromUri(context, state.currentVideoUri)
@@ -575,9 +609,9 @@ class MediaViewerViewModel : ViewModel() {
         withContext(Dispatchers.IO) {
             try {
                 val contentValues = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, "ComfyChair_${System.currentTimeMillis()}.png")
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "ComfyMobile_${System.currentTimeMillis()}.png")
                     put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ComfyChair")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ComfyMobile")
                 }
 
                 val resolver = context.contentResolver
@@ -612,9 +646,9 @@ class MediaViewerViewModel : ViewModel() {
                 }
 
                 val contentValues = ContentValues().apply {
-                    put(MediaStore.Video.Media.DISPLAY_NAME, "ComfyChair_${System.currentTimeMillis()}.mp4")
+                    put(MediaStore.Video.Media.DISPLAY_NAME, "ComfyMobile_${System.currentTimeMillis()}.mp4")
                     put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/ComfyChair")
+                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/ComfyMobile")
                 }
 
                 val resolver = context.contentResolver
@@ -648,9 +682,9 @@ class MediaViewerViewModel : ViewModel() {
 
             try {
                 val contentValues = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, "ComfyChair_${System.currentTimeMillis()}.png")
+                    put(MediaStore.Images.Media.DISPLAY_NAME, "ComfyMobile_${System.currentTimeMillis()}.png")
                     put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ComfyChair")
+                    put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/ComfyMobile")
                 }
 
                 val resolver = context.contentResolver
@@ -684,9 +718,9 @@ class MediaViewerViewModel : ViewModel() {
 
             try {
                 val contentValues = ContentValues().apply {
-                    put(MediaStore.Video.Media.DISPLAY_NAME, "ComfyChair_${System.currentTimeMillis()}.mp4")
+                    put(MediaStore.Video.Media.DISPLAY_NAME, "ComfyMobile_${System.currentTimeMillis()}.mp4")
                     put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
-                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/ComfyChair")
+                    put(MediaStore.Video.Media.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/ComfyMobile")
                 }
 
                 val resolver = context.contentResolver
@@ -710,7 +744,7 @@ class MediaViewerViewModel : ViewModel() {
         val state = _uiState.value
 
         viewModelScope.launch {
-            if (state.mode == ViewerMode.SINGLE) {
+            if (state.mode == ViewerMode.SINGLE || state.currentItem?.isPreview == true) {
                 if (state.currentItem?.isVideo == true || state.currentVideoUri != null) {
                     shareVideoFromUri(context, state.currentVideoUri)
                 } else {
