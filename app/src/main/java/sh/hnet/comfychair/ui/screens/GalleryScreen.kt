@@ -380,7 +380,8 @@ fun GalleryScreen(
                 } else {
                     // Normal mode actions: Slideshow, Select and Menu
                     IconButton(
-                        onClick = { launchMediaViewer(0, startSlideshow = true) },
+                        // Slideshow plays oldest to newest, so start from the last (oldest) item
+                        onClick = { launchMediaViewer(uiState.items.lastIndex, startSlideshow = true) },
                         enabled = uiState.items.isNotEmpty()
                     ) {
                         Icon(Icons.Default.Slideshow, contentDescription = stringResource(R.string.gallery_slideshow))

@@ -28,7 +28,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
-import kotlinx.coroutines.delay
+import sh.hnet.comfychair.ui.components.SlideshowPlayer
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Info
@@ -74,9 +74,6 @@ import sh.hnet.comfychair.ui.components.VideoScaleMode
 import sh.hnet.comfychair.viewmodel.MediaViewerEvent
 import sh.hnet.comfychair.viewmodel.MediaViewerViewModel
 import sh.hnet.comfychair.viewmodel.ViewerMode
-
-/** Time each item stays on screen during a slideshow */
-private const val SLIDESHOW_INTERVAL_MS = 3000L
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -143,7 +140,9 @@ fun MediaViewerScreen(
         // Media content
         when (uiState.mode) {
             ViewerMode.GALLERY -> {
-                if (uiState.items.isNotEmpty()) {
+                // The pager is left out during a slideshow (no video playing underneath) and is
+                // recreated afterwards at the item the slideshow stopped on
+                if (uiState.items.isNotEmpty() && !uiState.isSlideshowPlaying) {
                     // Key the pager by items list identity to force recreation on deletion
                     val itemsKey = uiState.items.map { "${it.promptId}_${it.filename}" }.joinToString(",")
 
@@ -169,17 +168,6 @@ fun MediaViewerScreen(
                                 }
                         }
 
-                        // Slideshow: advance every few seconds, wrapping around at the end
-                        LaunchedEffect(uiState.isSlideshowPlaying, pagerState.currentPage) {
-                            if (!uiState.isSlideshowPlaying) return@LaunchedEffect
-                            delay(SLIDESHOW_INTERVAL_MS)
-                            val next = pagerState.currentPage + 1
-                            if (next < uiState.items.size) {
-                                pagerState.animateScrollToPage(next)
-                            } else {
-                                pagerState.scrollToPage(0)
-                            }
-                        }
 
                         HorizontalPager(
                             state = pagerState,
@@ -290,6 +278,16 @@ fun MediaViewerScreen(
                     onSingleTap = { viewModel.toggleUiVisibility() }
                 )
             }
+        }
+
+        // Slideshow (drawn over the pager; tap or back stops it on the current item)
+        if (uiState.isSlideshowPlaying) {
+            SlideshowPlayer(
+                items = uiState.items,
+                startIndex = uiState.currentIndex,
+                onStop = { index -> viewModel.stopSlideshow(index) }
+            )
+            BackHandler { viewModel.stopSlideshow(uiState.currentIndex) }
         }
 
         // Counter chip (gallery mode only, when multiple items)

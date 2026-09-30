@@ -210,6 +210,12 @@ class MediaViewerViewModel : ViewModel() {
         _uiState.value = state.copy(isUiVisible = !state.isUiVisible)
     }
 
+    /** Stop the slideshow and continue viewing the item it was showing. */
+    fun stopSlideshow(atIndex: Int) {
+        if (atIndex != _uiState.value.currentIndex) setCurrentIndex(atIndex)
+        _uiState.value = _uiState.value.copy(isSlideshowPlaying = false, isUiVisible = true)
+    }
+
     /** Start (hides the controls) or stop the slideshow. */
     fun setSlideshowPlaying(playing: Boolean) {
         val state = _uiState.value
