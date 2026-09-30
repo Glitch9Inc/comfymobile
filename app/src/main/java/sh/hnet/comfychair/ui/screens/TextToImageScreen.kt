@@ -349,14 +349,14 @@ fun TextToImageScreen(
     fun showRecent(item: GalleryItem) {
         if (item.isVideo) {
             context.startActivity(
-                MediaViewerActivity.createGalleryIntent(
+                MediaViewerActivity.createPreviewIntent(
                     context = context,
                     hostname = generationViewModel.getHostname(),
                     port = generationViewModel.getPort(),
-                    items = listOf(
-                        MediaViewerItem(item.promptId, item.filename, item.subfolder, item.type, item.isVideo, item.index)
-                    ),
-                    initialIndex = 0
+                    bitmap = null,
+                    filename = item.filename,
+                    subfolder = item.subfolder,
+                    type = item.type
                 )
             )
             return
@@ -450,16 +450,19 @@ fun TextToImageScreen(
         }
     }
 
+    // Opens the preview full screen; swipe to move through the gallery.
+    // While generating, the preview is a live image, so it is not matched to a gallery item.
     val openPreviewViewer: () -> Unit = {
         uiState.previewBitmap?.let { bitmap ->
+            val live = isThisScreenExecuting && selectedRecent == null
             context.startActivity(
-                MediaViewerActivity.createSingleImageIntent(
+                MediaViewerActivity.createPreviewIntent(
                     context = context,
-                    bitmap = bitmap,
                     hostname = generationViewModel.getHostname(),
                     port = generationViewModel.getPort(),
-                    filename = selectedRecent?.filename ?: uiState.currentImageFilename,
-                    subfolder = selectedRecent?.subfolder ?: uiState.currentImageSubfolder,
+                    bitmap = bitmap,
+                    filename = if (live) null else selectedRecent?.filename ?: uiState.currentImageFilename,
+                    subfolder = if (live) null else selectedRecent?.subfolder ?: uiState.currentImageSubfolder,
                     type = selectedRecent?.type ?: uiState.currentImageType
                 )
             )
@@ -650,7 +653,7 @@ fun TextToImageScreen(
                                 .fillMaxSize()
                                 .clip(RoundedCornerShape(18.dp))
                                 .background(MaterialTheme.colorScheme.surfaceContainer)
-                                .clickable(enabled = uiState.previewBitmap != null && !isThisScreenExecuting) { openPreviewViewer() }
+                                .clickable(enabled = uiState.previewBitmap != null) { openPreviewViewer() }
                         ) {
                             uiState.previewBitmap?.let { bmp ->
                                 Image(
@@ -735,7 +738,7 @@ fun TextToImageScreen(
                             boxModifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(MaterialTheme.colorScheme.background)
-                                .clickable(enabled = uiState.previewBitmap != null && !isThisScreenExecuting) { openPreviewViewer() }
+                                .clickable(enabled = uiState.previewBitmap != null) { openPreviewViewer() }
                         ) {
                             uiState.previewBitmap?.let { bmp ->
                                 Image(

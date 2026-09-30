@@ -63,7 +63,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.suspendCancellableCoroutine
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -113,6 +119,8 @@ fun LoginScreen() {
     var warningMessage by remember { mutableStateOf<String?>(null) }
     var comfyUIClient by remember { mutableStateOf<ComfyUIClient?>(null) }
     var hasAutoConnected by remember { mutableStateOf(false) }
+    // Running connection attempt (cancelled when the user taps the button while connecting)
+    var connectJob by remember { mutableStateOf<Job?>(null) }
 
     // Dialog state
     var showServerDialog by remember { mutableStateOf(false) }
@@ -174,7 +182,7 @@ fun LoginScreen() {
         connectionState = ConnectionState.CONNECTING
         warningMessage = null
 
-        scope.launch {
+        connectJob = scope.launch {
             // Load credentials for the server
             val credentials = credentialStorage.getCredentials(server.id, server.authType)
 
@@ -199,10 +207,10 @@ fun LoginScreen() {
             )
             comfyUIClient = client
 
-            // Test connection using suspendCoroutine
-            val result = suspendCoroutine { continuation ->
+            // Test connection (cancellable: a late result after cancel is ignored)
+            val result = suspendCancellableCoroutine<Triple<Boolean, String?, CertificateIssue>> { continuation ->
                 client.testConnection { success, errorMessage, certIssue, _ ->
-                    continuation.resume(Triple(success, errorMessage, certIssue))
+                    if (continuation.isActive) continuation.resume(Triple(success, errorMessage, certIssue))
                 }
             }
 
@@ -286,19 +294,33 @@ fun LoginScreen() {
         attemptConnection(server, isRetryAfterAuth = true)
     }
 
-    // Offline connection function - loads from cache instead of connecting to server
-    fun attemptOfflineConnection(server: Server) {
+    // Stop a running connection attempt and go back to idle
+    fun cancelConnection() {
+        connectJob?.cancel()
+        connectJob = null
+        comfyUIClient?.shutdown()
+        comfyUIClient = null
+        connectionState = ConnectionState.IDLE
+        warningMessage = null
+        Toast.makeText(context, R.string.msg_connection_cancelled, Toast.LENGTH_SHORT).show()
+    }
+
+    // Offline connection function - loads from cache instead of connecting to server.
+    // requireCache = false lets the user start offline even without cached server data
+    // (only the on-device gallery is usable then).
+    fun attemptOfflineConnection(server: Server?, requireCache: Boolean = true) {
+        val serverId = server?.id ?: ConnectionManager.OFFLINE_SERVER_ID
         // Check if cache exists for this server
-        if (!ConnectionManager.hasOfflineCache(context, server.id)) {
+        if (requireCache && !ConnectionManager.hasOfflineCache(context, serverId)) {
             Toast.makeText(context, R.string.error_no_offline_cache, Toast.LENGTH_LONG).show()
             return
         }
 
         connectionState = ConnectionState.CONNECTING
 
-        scope.launch {
+        connectJob = scope.launch {
             // Load data from cache
-            val success = ConnectionManager.loadFromOfflineCache(context, server.id)
+            val success = ConnectionManager.loadFromOfflineCache(context, serverId, requireCache)
 
             if (success) {
                 connectionState = ConnectionState.CONNECTED
@@ -306,7 +328,7 @@ fun LoginScreen() {
                 delay(500)
 
                 // Save selected server
-                serverStorage.setSelectedServerId(server.id)
+                server?.let { serverStorage.setSelectedServerId(it.id) }
 
                 // Navigate to main activity (no actual connection established)
                 val intent = Intent(context, MainContainerActivity::class.java)
@@ -572,6 +594,7 @@ fun LoginScreen() {
                     connectionState = connectionState,
                     hasSelectedServer = selectedServer != null,
                     isOfflineMode = isOfflineMode,
+                    onCancel = { cancelConnection() },
                     onConnect = {
                         if (selectedServer != null) {
                             if (isOfflineMode) {
@@ -598,6 +621,23 @@ fun LoginScreen() {
                     },
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // Start in offline mode right away (no connection attempt)
+                if (!isOfflineMode && connectionState == ConnectionState.IDLE) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    TextButton(
+                        onClick = {
+                            AppSettings.setOfflineMode(context, true)
+                            isOfflineMode = true
+                            attemptOfflineConnection(selectedServer, requireCache = false)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CloudOff, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.button_start_offline))
+                    }
+                }
 
                 // Warning message
                 warningMessage?.let { message ->

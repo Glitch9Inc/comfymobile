@@ -19,6 +19,10 @@ import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import sh.hnet.comfychair.cache.MediaCache
+import sh.hnet.comfychair.cache.MediaCacheKey
+import sh.hnet.comfychair.cache.PriorityLruCache
+import sh.hnet.comfychair.repository.GalleryRepository
 import sh.hnet.comfychair.ui.screens.MediaViewerScreen
 import sh.hnet.comfychair.ui.theme.ComfyChairTheme
 import sh.hnet.comfychair.viewmodel.MediaViewerItem
@@ -66,6 +70,7 @@ class MediaViewerActivity : ComponentActivity() {
         const val EXTRA_PORT = "port"
         const val EXTRA_GALLERY_ITEMS_JSON = "gallery_items_json"
         const val EXTRA_INITIAL_INDEX = "initial_index"
+        const val EXTRA_START_SLIDESHOW = "start_slideshow"
 
         // Single mode extras
         const val EXTRA_IS_VIDEO = "is_video"
@@ -87,7 +92,8 @@ class MediaViewerActivity : ComponentActivity() {
             hostname: String,
             port: Int,
             items: List<MediaViewerItem>,
-            initialIndex: Int
+            initialIndex: Int,
+            startSlideshow: Boolean = false
         ): Intent {
             return Intent(context, MediaViewerActivity::class.java).apply {
                 putExtra(EXTRA_MODE, MODE_GALLERY)
@@ -95,7 +101,60 @@ class MediaViewerActivity : ComponentActivity() {
                 putExtra(EXTRA_PORT, port)
                 putExtra(EXTRA_GALLERY_ITEMS_JSON, MediaViewerItem.listToJson(items))
                 putExtra(EXTRA_INITIAL_INDEX, initialIndex)
+                putExtra(EXTRA_START_SLIDESHOW, startSlideshow)
             }
+        }
+
+        /**
+         * Create intent for viewing a generation screen's preview (or a recent result) with
+         * swipe navigation through the whole gallery.
+         *
+         * If the shown image is already in the gallery, the viewer opens at that item.
+         * Otherwise (e.g. a live preview during generation) the image is shown first and
+         * the gallery items follow it.
+         *
+         * @param bitmap The image currently shown in the preview (null for a gallery item)
+         */
+        fun createPreviewIntent(
+            context: Context,
+            hostname: String,
+            port: Int,
+            bitmap: Bitmap?,
+            filename: String?,
+            subfolder: String?,
+            type: String?
+        ): Intent {
+            val items = GalleryRepository.getInstance().galleryItems.value.map {
+                MediaViewerItem(it.promptId, it.filename, it.subfolder, it.type, it.isVideo, it.index)
+            }
+            val found = if (filename.isNullOrEmpty()) -1 else items.indexOfFirst {
+                it.filename == filename && (subfolder == null || it.subfolder == subfolder)
+            }
+            if (found >= 0 || bitmap == null) {
+                // Show the preview bitmap right away instead of waiting for the full image
+                if (found >= 0 && bitmap != null) {
+                    MediaCache.putBitmap(
+                        MediaCacheKey(items[found].promptId, items[found].filename),
+                        bitmap,
+                        PriorityLruCache.PRIORITY_CURRENT
+                    )
+                }
+                return createGalleryIntent(context, hostname, port, items, found.coerceAtLeast(0))
+            }
+
+            val preview = MediaViewerItem(
+                promptId = MediaViewerItem.PREVIEW_PROMPT_ID,
+                filename = filename ?: "",
+                subfolder = subfolder ?: "",
+                type = type ?: "output",
+                isVideo = false
+            )
+            MediaCache.putBitmap(
+                MediaCacheKey(preview.promptId, preview.filename),
+                bitmap,
+                PriorityLruCache.PRIORITY_CURRENT
+            )
+            return createGalleryIntent(context, hostname, port, listOf(preview) + items, 0)
         }
 
         /**
@@ -212,6 +271,7 @@ class MediaViewerActivity : ComponentActivity() {
         val port = intent.getIntExtra(EXTRA_PORT, 8188)
         val itemsJson = intent.getStringExtra(EXTRA_GALLERY_ITEMS_JSON) ?: "[]"
         val initialIndex = intent.getIntExtra(EXTRA_INITIAL_INDEX, 0)
+        val startSlideshow = intent.getBooleanExtra(EXTRA_START_SLIDESHOW, false)
 
         val items = MediaViewerItem.listFromJson(itemsJson)
 
@@ -221,7 +281,8 @@ class MediaViewerActivity : ComponentActivity() {
             port = port,
             mode = ViewerMode.GALLERY,
             items = items,
-            initialIndex = initialIndex
+            initialIndex = initialIndex,
+            startSlideshow = startSlideshow
         )
     }
 

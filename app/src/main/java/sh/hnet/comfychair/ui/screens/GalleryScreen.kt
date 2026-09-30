@@ -105,11 +105,19 @@ import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 import sh.hnet.comfychair.ui.components.rememberGalleryThumbnail
 import sh.hnet.comfychair.ui.components.GalleryThumbnailCache
 import androidx.compose.ui.draw.clip
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.material.icons.filled.Slideshow
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.round
+import sh.hnet.comfychair.ui.components.DragSelectState
+import sh.hnet.comfychair.ui.components.gallerySelectGestures
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -186,7 +194,7 @@ fun GalleryScreen(
     }
 
     // Function to launch media viewer
-    fun launchMediaViewer(clickedIndex: Int) {
+    fun launchMediaViewer(clickedIndex: Int, startSlideshow: Boolean = false) {
         // Set active view to MediaViewer
         MediaCache.setActiveView(ActiveView.MEDIA_VIEWER)
 
@@ -200,7 +208,8 @@ fun GalleryScreen(
             hostname = ConnectionManager.hostname,
             port = ConnectionManager.port,
             items = viewerItems,
-            initialIndex = clickedIndex
+            initialIndex = clickedIndex,
+            startSlideshow = startSlideshow
         )
         mediaViewerLauncher.launch(intent)
     }
@@ -215,6 +224,57 @@ fun GalleryScreen(
     val visibleCount = if (isMasonry) staggeredState.layoutInfo.visibleItemsInfo.size else gridState.layoutInfo.visibleItemsInfo.size
     val columns = viewMode.columns
     val spacing = if (columns >= 3) 4.dp else 8.dp
+
+    // Tap / long-press / drag-to-select handled at grid level (see gallerySelectGestures)
+    val haptics = LocalHapticFeedback.current
+    val dragSelectState = remember { DragSelectState() }
+    val edgeThreshold = with(LocalDensity.current) { 64.dp.toPx() }
+    val currentItems by rememberUpdatedState(uiState.items)
+    val currentSelection by rememberUpdatedState(uiState.selectedItems)
+    val currentSelectionMode by rememberUpdatedState(uiState.isSelectionMode)
+    val launchViewer by rememberUpdatedState<(Int) -> Unit>({ index -> launchMediaViewer(index) })
+    fun itemKey(item: GalleryItem) = "${item.promptId}_${item.filename}"
+    // Remembered so the gesture coroutine is not restarted on every recomposition
+    val selectGestures = remember(isMasonry) { Modifier.gallerySelectGestures(
+        state = dragSelectState,
+        haptics = haptics,
+        edgeThreshold = edgeThreshold,
+        keyAt = { pos ->
+            val hit = pos.round()
+            if (isMasonry) {
+                staggeredState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { IntRect(it.offset, it.size).contains(hit) }?.key as? String
+            } else {
+                gridState.layoutInfo.visibleItemsInfo
+                    .firstOrNull { IntRect(it.offset, it.size).contains(hit) }?.key as? String
+            }
+        },
+        keys = { currentItems.map(::itemKey) },
+        selection = { currentSelection },
+        onTap = { key ->
+            val index = currentItems.indexOfFirst { itemKey(it) == key }
+            if (index >= 0) {
+                if (currentSelectionMode) {
+                    galleryViewModel.toggleSelection(currentItems[index])
+                } else {
+                    launchViewer(index)
+                }
+            }
+        },
+        onSelectionChange = { galleryViewModel.setSelection(it) }
+    ) }
+
+    // Auto-scroll while drag-selecting near the top/bottom edge
+    LaunchedEffect(dragSelectState.autoScrollSpeed) {
+        val speed = dragSelectState.autoScrollSpeed
+        if (speed != 0f) {
+            while (true) {
+                if (isMasonry) staggeredState.scrollBy(speed * 0.3f) else gridState.scrollBy(speed * 0.3f)
+                dragSelectState.onAutoScrolled()
+                kotlinx.coroutines.delay(16)
+            }
+        }
+    }
 
     // Album dialogs
     var showNewAlbumDialog by remember { mutableStateOf(false) }
@@ -318,7 +378,13 @@ fun GalleryScreen(
                         Icon(Icons.Default.Share, contentDescription = stringResource(R.string.button_share))
                     }
                 } else {
-                    // Normal mode actions: Select and Menu
+                    // Normal mode actions: Slideshow, Select and Menu
+                    IconButton(
+                        onClick = { launchMediaViewer(0, startSlideshow = true) },
+                        enabled = uiState.items.isNotEmpty()
+                    ) {
+                        Icon(Icons.Default.Slideshow, contentDescription = stringResource(R.string.gallery_slideshow))
+                    }
                     IconButton(onClick = { galleryViewModel.enterSelectionMode() }) {
                         Icon(Icons.Default.Checklist, contentDescription = stringResource(R.string.button_gallery_select))
                     }
@@ -351,6 +417,18 @@ fun GalleryScreen(
                     selected = viewMode == mode,
                     onClick = { galleryViewModel.setViewMode(mode) }
                 )
+            }
+            if (uiState.isSelectionMode && uiState.items.isNotEmpty()) {
+                Spacer(modifier = Modifier.weight(1f))
+                val allSelected = uiState.items.all { itemKey(it) in uiState.selectedItems }
+                TextButton(
+                    onClick = {
+                        if (allSelected) galleryViewModel.setSelection(emptySet())
+                        else galleryViewModel.selectAll()
+                    }
+                ) {
+                    Text(stringResource(if (allSelected) R.string.gallery_deselect_all else R.string.gallery_select_all))
+                }
             }
         }
 
@@ -410,7 +488,7 @@ fun GalleryScreen(
                     contentPadding = PaddingValues(spacing),
                     horizontalArrangement = Arrangement.spacedBy(spacing),
                     verticalItemSpacing = spacing,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize().then(selectGestures)
                 ) {
                 if (uiState.isLoading && uiState.items.isEmpty()) {
                     // Loading state - show as full-span item
@@ -452,21 +530,13 @@ fun GalleryScreen(
                     }
                 } else {
                     // Gallery items
-                    itemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { index, item ->
+                    itemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { _, item ->
                         val key = "${item.promptId}_${item.filename}"
                         GalleryItemCard(
                             item = item,
                             isSelected = key in uiState.selectedItems,
                             isOfflineMode = isOfflineMode,
-                            square = viewMode.square,
-                            onTap = {
-                                if (uiState.isSelectionMode) {
-                                    galleryViewModel.toggleSelection(item)
-                                } else {
-                                    launchMediaViewer(index)
-                                }
-                            },
-                            onLongPress = { galleryViewModel.toggleSelection(item) }
+                            square = viewMode.square
                         )
                     }
                 }
@@ -478,7 +548,7 @@ fun GalleryScreen(
                     contentPadding = PaddingValues(spacing),
                     horizontalArrangement = Arrangement.spacedBy(spacing),
                     verticalArrangement = Arrangement.spacedBy(spacing),
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize().then(selectGestures)
                 ) {
                 if (uiState.isLoading && uiState.items.isEmpty()) {
                     // Loading state - show as full-span item
@@ -520,21 +590,13 @@ fun GalleryScreen(
                     }
                 } else {
                     // Gallery items
-                    gridItemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { index, item ->
+                    gridItemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { _, item ->
                         val key = "${item.promptId}_${item.filename}"
                         GalleryItemCard(
                             item = item,
                             isSelected = key in uiState.selectedItems,
                             isOfflineMode = isOfflineMode,
-                            square = viewMode.square,
-                            onTap = {
-                                if (uiState.isSelectionMode) {
-                                    galleryViewModel.toggleSelection(item)
-                                } else {
-                                    launchMediaViewer(index)
-                                }
-                            },
-                            onLongPress = { galleryViewModel.toggleSelection(item) }
+                            square = viewMode.square
                         )
                     }
                 }
@@ -711,16 +773,14 @@ private fun AddToAlbumDialog(
 /**
  * Gallery item card with lazy bitmap loading.
  * Bitmaps are loaded from MediaCache on-demand.
+ * Taps and long presses are handled by the grid (gallerySelectGestures).
  */
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun GalleryItemCard(
     item: GalleryItem,
     isSelected: Boolean,
     isOfflineMode: Boolean = false,
-    square: Boolean = true,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit
+    square: Boolean = true
 ) {
     // Create cache key directly from item's stable properties
     val context = LocalContext.current
@@ -750,7 +810,6 @@ private fun GalleryItemCard(
                 }
             )
             .clip(MaterialTheme.shapes.medium)
-            .combinedClickable(onClick = onTap, onLongClick = onLongPress)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             // Thumbnail from cache

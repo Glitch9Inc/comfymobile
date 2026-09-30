@@ -515,6 +515,17 @@ class GalleryViewModel : ViewModel() {
         _isSelectionMode.value = true
     }
 
+    /** Replace the whole selection (used by drag-to-select and select all). */
+    fun setSelection(keys: Set<String>) {
+        _selectedItems.value = keys
+        _isSelectionMode.value = keys.isNotEmpty()
+    }
+
+    /** Select every item currently shown (respects the selected album). */
+    fun selectAll() {
+        setSelection(uiState.value.items.map { getItemKey(it) }.toSet())
+    }
+
     fun deleteSelected() {
         val selectedItems = getSelectedItems()
         if (selectedItems.isEmpty()) return

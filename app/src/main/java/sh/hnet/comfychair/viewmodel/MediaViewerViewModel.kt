@@ -55,6 +55,10 @@ data class MediaViewerItem(
     val isVideo: Boolean,
     val index: Int = 0
 ) {
+    /** Not a gallery item: an image handed over from a generation screen's preview */
+    val isPreview: Boolean
+        get() = promptId == PREVIEW_PROMPT_ID
+
     fun toJson(): JSONObject {
         return JSONObject().apply {
             put("promptId", promptId)
@@ -67,6 +71,8 @@ data class MediaViewerItem(
     }
 
     companion object {
+        const val PREVIEW_PROMPT_ID = "__preview__"
+
         fun fromJson(json: JSONObject): MediaViewerItem {
             return MediaViewerItem(
                 promptId = json.optString("promptId", ""),
@@ -109,7 +115,8 @@ data class MediaViewerUiState(
     val isUiVisible: Boolean = true,
     val isLoading: Boolean = false,
     val currentBitmap: Bitmap? = null,
-    val currentVideoUri: Uri? = null
+    val currentVideoUri: Uri? = null,
+    val isSlideshowPlaying: Boolean = false
 ) {
     val currentItem: MediaViewerItem?
         get() = items.getOrNull(currentIndex)
@@ -166,17 +173,21 @@ class MediaViewerViewModel : ViewModel() {
         items: List<MediaViewerItem>,
         initialIndex: Int,
         singleBitmap: Bitmap? = null,
-        singleVideoUri: Uri? = null
+        singleVideoUri: Uri? = null,
+        startSlideshow: Boolean = false
     ) {
         applicationContext = context.applicationContext
 
+        val slideshow = startSlideshow && mode == ViewerMode.GALLERY && items.size > 1
         _uiState.value = MediaViewerUiState(
             mode = mode,
             items = items,
             currentIndex = initialIndex.coerceIn(0, (items.size - 1).coerceAtLeast(0)),
             currentBitmap = singleBitmap,
             currentVideoUri = singleVideoUri,
-            isLoading = mode == ViewerMode.GALLERY && items.isNotEmpty()
+            isLoading = mode == ViewerMode.GALLERY && items.isNotEmpty(),
+            isSlideshowPlaying = slideshow,
+            isUiVisible = !slideshow
         )
 
         // For gallery mode, set up priorities and load current item
@@ -190,7 +201,20 @@ class MediaViewerViewModel : ViewModel() {
     }
 
     fun toggleUiVisibility() {
-        _uiState.value = _uiState.value.copy(isUiVisible = !_uiState.value.isUiVisible)
+        val state = _uiState.value
+        if (state.isSlideshowPlaying) {
+            // Tapping during a slideshow stops it and brings the controls back
+            _uiState.value = state.copy(isSlideshowPlaying = false, isUiVisible = true)
+            return
+        }
+        _uiState.value = state.copy(isUiVisible = !state.isUiVisible)
+    }
+
+    /** Start (hides the controls) or stop the slideshow. */
+    fun setSlideshowPlaying(playing: Boolean) {
+        val state = _uiState.value
+        if (playing && (state.mode != ViewerMode.GALLERY || state.items.size < 2)) return
+        _uiState.value = state.copy(isSlideshowPlaying = playing, isUiVisible = !playing)
     }
 
     fun setCurrentIndex(index: Int) {
@@ -487,6 +511,7 @@ class MediaViewerViewModel : ViewModel() {
     fun deleteCurrentItem() {
         val state = _uiState.value
         val item = state.currentItem ?: return
+        if (item.isPreview) return
         val client = ConnectionManager.clientOrNull ?: return
 
         viewModelScope.launch {
@@ -556,7 +581,7 @@ class MediaViewerViewModel : ViewModel() {
         val state = _uiState.value
 
         viewModelScope.launch {
-            if (state.mode == ViewerMode.SINGLE) {
+            if (state.mode == ViewerMode.SINGLE || state.currentItem?.isPreview == true) {
                 // Save from current bitmap/video
                 if (state.currentItem?.isVideo == true || state.currentVideoUri != null) {
                     saveVideoFromUri(context, state.currentVideoUri)
@@ -719,7 +744,7 @@ class MediaViewerViewModel : ViewModel() {
         val state = _uiState.value
 
         viewModelScope.launch {
-            if (state.mode == ViewerMode.SINGLE) {
+            if (state.mode == ViewerMode.SINGLE || state.currentItem?.isPreview == true) {
                 if (state.currentItem?.isVideo == true || state.currentVideoUri != null) {
                     shareVideoFromUri(context, state.currentVideoUri)
                 } else {

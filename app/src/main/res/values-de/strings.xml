@@ -653,4 +653,12 @@
     <string name="button_change_server">Server wechseln</string>
     <string name="label_kept_on_device">Auf dem Gerät gespeichert</string>
     <string name="desc_kept_on_device">%1$d Elemente, die bleiben, auch wenn sie vom Server gelöscht werden</string>
+    <string name="button_connecting_cancel">Verbinde… (tippen zum Abbrechen)</string>
+    <string name="msg_connection_cancelled">Verbindung abgebrochen</string>
+    <string name="button_start_offline">Offline starten</string>
+    <string name="gallery_select_all">Alle auswählen</string>
+    <string name="gallery_deselect_all">Auswahl aufheben</string>
+    <string name="gallery_slideshow">Diashow</string>
+    <string name="media_viewer_slideshow_start">Diashow starten</string>
+    <string name="media_viewer_slideshow_stop">Diashow beenden</string>
 </resources>

@@ -343,20 +343,21 @@ fun ImageToImageScreen(
                         .heightIn(min = 150.dp)
                         .background(MaterialTheme.colorScheme.background)
                         .clickable(
-                            enabled = (uiState.viewMode == ImageToImageViewMode.PREVIEW && uiState.previewImage != null && !isThisScreenExecuting) ||
+                            enabled = (uiState.viewMode == ImageToImageViewMode.PREVIEW && uiState.previewImage != null) ||
                                       (uiState.viewMode == ImageToImageViewMode.SOURCE && uiState.sourceImage != null),
                             onClick = {
                                 when (uiState.viewMode) {
                                     ImageToImageViewMode.PREVIEW -> {
-                                        // Launch MediaViewer for generated image
+                                        // Launch MediaViewer for generated image (swipe through the gallery).
+                                        // While generating, the preview is a live image, not a gallery item.
                                         uiState.previewImage?.let { bitmap ->
-                                            val intent = MediaViewerActivity.createSingleImageIntent(
+                                            val intent = MediaViewerActivity.createPreviewIntent(
                                                 context = context,
-                                                bitmap = bitmap,
                                                 hostname = generationViewModel.getHostname(),
                                                 port = generationViewModel.getPort(),
-                                                filename = uiState.previewImageFilename,
-                                                subfolder = uiState.previewImageSubfolder,
+                                                bitmap = bitmap,
+                                                filename = if (isThisScreenExecuting) null else uiState.previewImageFilename,
+                                                subfolder = if (isThisScreenExecuting) null else uiState.previewImageSubfolder,
                                                 type = uiState.previewImageType
                                             )
                                             context.startActivity(intent)
@@ -455,12 +456,14 @@ fun ImageToImageScreen(
                 selectedKey = null,
                 onSelect = { item ->
                     context.startActivity(
-                        MediaViewerActivity.createGalleryIntent(
+                        MediaViewerActivity.createPreviewIntent(
                             context = context,
                             hostname = generationViewModel.getHostname(),
                             port = generationViewModel.getPort(),
-                            items = listOf(MediaViewerItem(item.promptId, item.filename, item.subfolder, item.type, item.isVideo, item.index)),
-                            initialIndex = 0
+                            bitmap = null,
+                            filename = item.filename,
+                            subfolder = item.subfolder,
+                            type = item.type
                         )
                     )
                 },

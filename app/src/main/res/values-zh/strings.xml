@@ -655,4 +655,12 @@
     <string name="button_change_server">更换服务器</string>
     <string name="label_kept_on_device">保存在本机</string>
     <string name="desc_kept_on_device">%1$d 项，即使服务器上删除也会保留</string>
+    <string name="button_connecting_cancel">正在连接…（点按取消）</string>
+    <string name="msg_connection_cancelled">已取消连接</string>
+    <string name="button_start_offline">离线启动</string>
+    <string name="gallery_select_all">全选</string>
+    <string name="gallery_deselect_all">取消全选</string>
+    <string name="gallery_slideshow">幻灯片</string>
+    <string name="media_viewer_slideshow_start">开始幻灯片</string>
+    <string name="media_viewer_slideshow_stop">停止幻灯片</string>
 </resources>

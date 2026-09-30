@@ -46,6 +46,7 @@ import sh.hnet.comfychair.ui.screens.ConnectionState
  * @param connectionState Current connection state
  * @param hasSelectedServer Whether a server is currently selected
  * @param isOfflineMode Whether offline mode is enabled
+ * @param onCancel Callback when the button is tapped while connecting
  * @param onConnect Callback when Connect button is clicked
  * @param onAddServer Callback to add a new server
  * @param onEditServer Callback to edit the selected server
@@ -58,6 +59,7 @@ fun ConnectionSplitButton(
     connectionState: ConnectionState,
     hasSelectedServer: Boolean,
     isOfflineMode: Boolean = false,
+    onCancel: () -> Unit = {},
     onConnect: () -> Unit,
     onGoOnline: () -> Unit,
     onAddServer: () -> Unit,
@@ -85,14 +87,15 @@ fun ConnectionSplitButton(
     val buttonText = when {
         isOfflineMode && connectionState == ConnectionState.IDLE -> stringResource(R.string.button_offline)
         connectionState == ConnectionState.IDLE -> stringResource(R.string.button_connect)
-        connectionState == ConnectionState.CONNECTING -> stringResource(R.string.button_connecting)
+        connectionState == ConnectionState.CONNECTING -> stringResource(R.string.button_connecting_cancel)
         connectionState == ConnectionState.FAILED -> stringResource(R.string.button_failed)
         connectionState == ConnectionState.CONNECTED -> stringResource(R.string.button_connected)
         else -> stringResource(R.string.button_connect)
     }
 
-    // Leading button enabled when IDLE and has a selected server
-    val leadingEnabled = connectionState == ConnectionState.IDLE && hasSelectedServer
+    // Leading button enabled when IDLE and has a selected server; while CONNECTING it cancels
+    val isConnecting = connectionState == ConnectionState.CONNECTING
+    val leadingEnabled = (connectionState == ConnectionState.IDLE && hasSelectedServer) || isConnecting
 
     // Trailing button disabled when CONNECTED or FAILED
     val trailingEnabled = connectionState != ConnectionState.CONNECTED &&
@@ -101,7 +104,7 @@ fun ConnectionSplitButton(
     Row(modifier = modifier) {
         // Leading button - connection action
         SplitButtonDefaults.ElevatedLeadingButton(
-            onClick = onConnect,
+            onClick = { if (isConnecting) onCancel() else onConnect() },
             enabled = leadingEnabled,
             colors = ButtonDefaults.elevatedButtonColors(
                 containerColor = containerColor,

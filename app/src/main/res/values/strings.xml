@@ -684,4 +684,12 @@
     <string name="button_change_server">Change server</string>
     <string name="label_kept_on_device">Kept on this device</string>
     <string name="desc_kept_on_device">%1$d items that stay even if removed from the server</string>
+    <string name="button_connecting_cancel">Connecting… (tap to cancel)</string>
+    <string name="msg_connection_cancelled">Connection cancelled</string>
+    <string name="button_start_offline">Start offline</string>
+    <string name="gallery_select_all">Select all</string>
+    <string name="gallery_deselect_all">Deselect all</string>
+    <string name="gallery_slideshow">Slideshow</string>
+    <string name="media_viewer_slideshow_start">Start slideshow</string>
+    <string name="media_viewer_slideshow_stop">Stop slideshow</string>
 </resources>

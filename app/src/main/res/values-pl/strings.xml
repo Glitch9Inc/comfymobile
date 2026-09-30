@@ -655,4 +655,12 @@
     <string name="button_change_server">Zmień serwer</string>
     <string name="label_kept_on_device">Zapisane na urządzeniu</string>
     <string name="desc_kept_on_device">%1$d elementów, które zostają nawet po usunięciu z serwera</string>
+    <string name="button_connecting_cancel">Łączenie… (dotknij, aby anulować)</string>
+    <string name="msg_connection_cancelled">Anulowano łączenie</string>
+    <string name="button_start_offline">Uruchom offline</string>
+    <string name="gallery_select_all">Zaznacz wszystko</string>
+    <string name="gallery_deselect_all">Odznacz wszystko</string>
+    <string name="gallery_slideshow">Pokaz slajdów</string>
+    <string name="media_viewer_slideshow_start">Uruchom pokaz slajdów</string>
+    <string name="media_viewer_slideshow_stop">Zatrzymaj pokaz slajdów</string>
 </resources>

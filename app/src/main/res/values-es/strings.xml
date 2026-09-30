@@ -655,4 +655,12 @@
     <string name="button_change_server">Cambiar servidor</string>
     <string name="label_kept_on_device">Guardado en el dispositivo</string>
     <string name="desc_kept_on_device">%1$d elementos que se conservan aunque se borren del servidor</string>
+    <string name="button_connecting_cancel">Conectando… (toca para cancelar)</string>
+    <string name="msg_connection_cancelled">Conexión cancelada</string>
+    <string name="button_start_offline">Empezar sin conexión</string>
+    <string name="gallery_select_all">Seleccionar todo</string>
+    <string name="gallery_deselect_all">Deseleccionar todo</string>
+    <string name="gallery_slideshow">Presentación</string>
+    <string name="media_viewer_slideshow_start">Iniciar presentación</string>
+    <string name="media_viewer_slideshow_stop">Detener presentación</string>
 </resources>

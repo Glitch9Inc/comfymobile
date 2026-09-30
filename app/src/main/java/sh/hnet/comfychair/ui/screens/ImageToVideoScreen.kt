@@ -441,12 +441,14 @@ fun ImageToVideoScreen(
                 selectedKey = null,
                 onSelect = { item ->
                     context.startActivity(
-                        MediaViewerActivity.createGalleryIntent(
+                        MediaViewerActivity.createPreviewIntent(
                             context = context,
                             hostname = generationViewModel.getHostname(),
                             port = generationViewModel.getPort(),
-                            items = listOf(MediaViewerItem(item.promptId, item.filename, item.subfolder, item.type, item.isVideo, item.index)),
-                            initialIndex = 0
+                            bitmap = null,
+                            filename = item.filename,
+                            subfolder = item.subfolder,
+                            type = item.type
                         )
                     )
                 },
