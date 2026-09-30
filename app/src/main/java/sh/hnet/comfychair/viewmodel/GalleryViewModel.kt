@@ -59,6 +59,24 @@ enum class GalleryViewMode(val columns: Int, val square: Boolean) {
 }
 
 /**
+ * Order of the gallery items. The repository delivers them newest first.
+ */
+enum class GallerySortOrder {
+    NEWEST,
+    OLDEST,
+    NAME,
+    /** Images first, then videos (newest first within each) */
+    TYPE;
+
+    fun apply(items: List<GalleryItem>): List<GalleryItem> = when (this) {
+        NEWEST -> items
+        OLDEST -> items.asReversed()
+        NAME -> items.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.filename })
+        TYPE -> items.sortedBy { it.isVideo }
+    }
+}
+
+/**
  * UI state for the Gallery screen
  */
 data class GalleryUiState(
@@ -67,6 +85,7 @@ data class GalleryUiState(
     /** Total number of items before album filtering */
     val totalCount: Int = 0,
     val viewMode: GalleryViewMode = GalleryViewMode.GRID_2,
+    val sortOrder: GallerySortOrder = GallerySortOrder.NEWEST,
     val albums: List<GalleryAlbum> = emptyList(),
     /** null = all items */
     val selectedAlbumId: String? = null,
@@ -107,6 +126,7 @@ class GalleryViewModel : ViewModel() {
     // View mode and albums
     private data class ViewState(
         val viewMode: GalleryViewMode = GalleryViewMode.GRID_2,
+        val sortOrder: GallerySortOrder = GallerySortOrder.NEWEST,
         val albums: List<GalleryAlbum> = emptyList(),
         val selectedAlbumId: String? = null
     )
@@ -141,9 +161,12 @@ class GalleryViewModel : ViewModel() {
                 val inAnyAlbum = view.albums.flatMapTo(HashSet()) { it.members }
                 val unsorted = items.filter { getItemKey(it) !in inAnyAlbum }
                 GalleryUiState(
-                    items = if (album == null) unsorted else items.filter { getItemKey(it) in album.members },
+                    items = view.sortOrder.apply(
+                        if (album == null) unsorted else items.filter { getItemKey(it) in album.members }
+                    ),
                     totalCount = unsorted.size,
                     viewMode = view.viewMode,
+                    sortOrder = view.sortOrder,
                     albums = view.albums,
                     selectedAlbumId = album?.id,
                     albumCounts = view.albums.associate { a -> a.id to items.count { getItemKey(it) in a.members } },
@@ -165,8 +188,16 @@ class GalleryViewModel : ViewModel() {
         val mode = AppSettings.getGalleryViewMode(context)
             ?.let { name -> GalleryViewMode.entries.firstOrNull { it.name == name } }
             ?: GalleryViewMode.GRID_2
-        _viewState.value = _viewState.value.copy(viewMode = mode)
+        val order = AppSettings.getGallerySortOrder(context)
+            ?.let { name -> GallerySortOrder.entries.firstOrNull { it.name == name } }
+            ?: GallerySortOrder.NEWEST
+        _viewState.value = _viewState.value.copy(viewMode = mode, sortOrder = order)
         reloadAlbums()
+    }
+
+    fun setSortOrder(order: GallerySortOrder) {
+        _viewState.value = _viewState.value.copy(sortOrder = order)
+        appContext?.let { AppSettings.setGallerySortOrder(it, order.name) }
     }
 
     // View mode

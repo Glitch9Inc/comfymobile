@@ -117,6 +117,11 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.round
 import sh.hnet.comfychair.ui.components.DragSelectState
+import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import sh.hnet.comfychair.viewmodel.GallerySortOrder
 import sh.hnet.comfychair.ui.components.gallerySelectGestures
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -309,8 +314,8 @@ fun GalleryScreen(
         }
     }
 
-    // Start at the top when switching album or view mode
-    LaunchedEffect(uiState.selectedAlbumId, viewMode) {
+    // Start at the top when switching album, view mode or sort order
+    LaunchedEffect(uiState.selectedAlbumId, viewMode, uiState.sortOrder) {
         if (isMasonry) staggeredState.scrollToItem(0) else gridState.scrollToItem(0)
     }
 
@@ -380,7 +385,7 @@ fun GalleryScreen(
                 } else {
                     // Normal mode actions: Slideshow, Select and Menu
                     IconButton(
-                        // Slideshow plays oldest to newest, so start from the last (oldest) item
+                        // Slideshow plays towards the top of the list, so start from the last item
                         onClick = { launchMediaViewer(uiState.items.lastIndex, startSlideshow = true) },
                         enabled = uiState.items.isNotEmpty()
                     ) {
@@ -419,8 +424,35 @@ fun GalleryScreen(
                     onClick = { galleryViewModel.setViewMode(mode) }
                 )
             }
+            Spacer(modifier = Modifier.weight(1f))
+            // Sort order menu
+            Box {
+                var showSortMenu by remember { mutableStateOf(false) }
+                IconButton(onClick = { showSortMenu = true }) {
+                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.gallery_sort))
+                }
+                DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                    listOf(
+                        GallerySortOrder.NEWEST to R.string.gallery_sort_newest,
+                        GallerySortOrder.OLDEST to R.string.gallery_sort_oldest,
+                        GallerySortOrder.NAME to R.string.gallery_sort_name,
+                        GallerySortOrder.TYPE to R.string.gallery_sort_type
+                    ).forEach { (order, labelRes) ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(labelRes)) },
+                            onClick = {
+                                galleryViewModel.setSortOrder(order)
+                                showSortMenu = false
+                            },
+                            leadingIcon = {
+                                if (uiState.sortOrder == order) Icon(Icons.Default.Check, contentDescription = null)
+                                else Spacer(Modifier.size(24.dp))
+                            }
+                        )
+                    }
+                }
+            }
             if (uiState.isSelectionMode && uiState.items.isNotEmpty()) {
-                Spacer(modifier = Modifier.weight(1f))
                 val allSelected = uiState.items.all { itemKey(it) in uiState.selectedItems }
                 TextButton(
                     onClick = {

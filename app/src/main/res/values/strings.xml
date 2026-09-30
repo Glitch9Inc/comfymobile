@@ -692,4 +692,9 @@
     <string name="gallery_slideshow">Slideshow</string>
     <string name="media_viewer_slideshow_start">Start slideshow</string>
     <string name="media_viewer_slideshow_stop">Stop slideshow</string>
+    <string name="gallery_sort">Sort</string>
+    <string name="gallery_sort_newest">Newest first</string>
+    <string name="gallery_sort_oldest">Oldest first</string>
+    <string name="gallery_sort_name">Name</string>
+    <string name="gallery_sort_type">Images first</string>
 </resources>

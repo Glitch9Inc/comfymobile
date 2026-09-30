@@ -663,4 +663,9 @@
     <string name="gallery_slideshow">Pokaz slajdów</string>
     <string name="media_viewer_slideshow_start">Uruchom pokaz slajdów</string>
     <string name="media_viewer_slideshow_stop">Zatrzymaj pokaz slajdów</string>
+    <string name="gallery_sort">Sortuj</string>
+    <string name="gallery_sort_newest">Najnowsze najpierw</string>
+    <string name="gallery_sort_oldest">Najstarsze najpierw</string>
+    <string name="gallery_sort_name">Nazwa</string>
+    <string name="gallery_sort_type">Najpierw obrazy</string>
 </resources>

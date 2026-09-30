@@ -663,4 +663,9 @@
     <string name="gallery_slideshow">幻灯片</string>
     <string name="media_viewer_slideshow_start">开始幻灯片</string>
     <string name="media_viewer_slideshow_stop">停止幻灯片</string>
+    <string name="gallery_sort">排序</string>
+    <string name="gallery_sort_newest">最新优先</string>
+    <string name="gallery_sort_oldest">最早优先</string>
+    <string name="gallery_sort_name">名称</string>
+    <string name="gallery_sort_type">图片优先</string>
 </resources>

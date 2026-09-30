@@ -661,4 +661,9 @@
     <string name="gallery_slideshow">Diashow</string>
     <string name="media_viewer_slideshow_start">Diashow starten</string>
     <string name="media_viewer_slideshow_stop">Diashow beenden</string>
+    <string name="gallery_sort">Sortieren</string>
+    <string name="gallery_sort_newest">Neueste zuerst</string>
+    <string name="gallery_sort_oldest">Älteste zuerst</string>
+    <string name="gallery_sort_name">Name</string>
+    <string name="gallery_sort_type">Bilder zuerst</string>
 </resources>

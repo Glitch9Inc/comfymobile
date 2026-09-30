@@ -242,4 +242,19 @@ object AppSettings {
             .putString(KEY_GALLERY_VIEW_MODE, mode)
             .apply()
     }
+
+    private const val KEY_GALLERY_SORT_ORDER = "gallery_sort_order"
+
+    /** Gallery sort order name (see GallerySortOrder). */
+    fun getGallerySortOrder(context: Context): String? {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_GALLERY_SORT_ORDER, null)
+    }
+
+    fun setGallerySortOrder(context: Context, order: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(KEY_GALLERY_SORT_ORDER, order)
+            .apply()
+    }
 }

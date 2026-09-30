@@ -663,4 +663,9 @@
     <string name="gallery_slideshow">Diaporama</string>
     <string name="media_viewer_slideshow_start">Lancer le diaporama</string>
     <string name="media_viewer_slideshow_stop">Arrêter le diaporama</string>
+    <string name="gallery_sort">Trier</string>
+    <string name="gallery_sort_newest">Plus récents d’abord</string>
+    <string name="gallery_sort_oldest">Plus anciens d’abord</string>
+    <string name="gallery_sort_name">Nom</string>
+    <string name="gallery_sort_type">Images d’abord</string>
 </resources>

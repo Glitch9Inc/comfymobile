@@ -663,4 +663,9 @@
     <string name="gallery_slideshow">Presentación</string>
     <string name="media_viewer_slideshow_start">Iniciar presentación</string>
     <string name="media_viewer_slideshow_stop">Detener presentación</string>
+    <string name="gallery_sort">Ordenar</string>
+    <string name="gallery_sort_newest">Más recientes primero</string>
+    <string name="gallery_sort_oldest">Más antiguos primero</string>
+    <string name="gallery_sort_name">Nombre</string>
+    <string name="gallery_sort_type">Imágenes primero</string>
 </resources>
