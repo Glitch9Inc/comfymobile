@@ -414,7 +414,8 @@ fun TextToVideoScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .padding(bottom = 16.dp)
+                .padding(bottom = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             GenerationButton(
                 queueSize = queueState.totalQueueSize,

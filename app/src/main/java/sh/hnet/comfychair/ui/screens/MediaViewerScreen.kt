@@ -359,7 +359,7 @@ fun MediaViewerScreen(
                 .navigationBarsPadding()
                 .padding(bottom = toolbarBottomPadding + 76.dp)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 FilledTonalButton(onClick = { viewModel.reusePrompt() }) {
                     Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))

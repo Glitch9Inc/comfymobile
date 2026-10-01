@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -57,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -489,7 +491,14 @@ fun TextToImageScreen(
                 textToImageViewModel.onPositivePromptChange(it)
                 presetViewModel.clearActivePreset()
             },
-            label = { Text(stringResource(R.string.hint_prompt)) },
+            // Placeholder instead of a floating label, and no outline: the card is the frame,
+            // so the text sits centered in it (the label's notch pushed it down before)
+            placeholder = { Text(stringResource(R.string.hint_prompt)) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Color.Transparent,
+                unfocusedBorderColor = Color.Transparent,
+                disabledBorderColor = Color.Transparent
+            ),
             modifier = m.onFocusChanged { promptFocused = it.isFocused },
             minLines = 3,
             maxLines = if (fill) Int.MAX_VALUE else 4,
@@ -517,7 +526,7 @@ fun TextToImageScreen(
     }
 
     val generateRow: @Composable () -> Unit = {
-        Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GenerationButton(
                 queueSize = queueState.totalQueueSize,
                 isExecuting = queueState.isExecuting,
@@ -618,7 +627,10 @@ fun TextToImageScreen(
                     }
 
                     GenCard(if (expandPrompt) Modifier.weight(1f).fillMaxWidth() else Modifier.fillMaxWidth()) {
-                        Column((if (expandPrompt) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                        Column(
+                            (if (expandPrompt) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(4.dp),
+                            verticalArrangement = Arrangement.Center
+                        ) {
                             promptField(
                                 if (expandPrompt) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth(),
                                 expandPrompt
@@ -701,7 +713,7 @@ fun TextToImageScreen(
                         serverMenu()
                     }
                     GenCard(Modifier.fillMaxWidth().weight(1f)) {
-                        Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp)) {
+                        Column(Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.Center) {
                             promptField(Modifier.fillMaxWidth().weight(1f), true)
                         }
                     }
