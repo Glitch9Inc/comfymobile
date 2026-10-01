@@ -37,6 +37,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -191,7 +192,7 @@ fun StatusDot(connected: Boolean, modifier: Modifier = Modifier) {
     )
 }
 
-/** Workflow selector chip ("WORKFLOW / name ▼"). */
+/** Compact workflow selector chip ("name ▼"). */
 @Composable
 fun WorkflowChip(
     workflows: List<String>,
@@ -208,20 +209,15 @@ fun WorkflowChip(
                 .background(MaterialTheme.colorScheme.surfaceContainerHigh)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
                 .clickable(enabled = workflows.isNotEmpty()) { open = true }
-                .padding(start = 10.dp, end = 4.dp, top = 5.dp, bottom = 5.dp)
+                .height(32.dp)
+                .padding(start = 10.dp, end = 2.dp)
         ) {
-            Column(Modifier.widthIn(max = 180.dp)) {
-                Text(
-                    stringResource(R.string.label_workflow).uppercase(),
-                    fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    selected.ifEmpty { "—" },
-                    fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
-                )
-            }
+            Text(
+                selected.ifEmpty { "—" },
+                fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 200.dp)
+            )
             Icon(Icons.Default.ArrowDropDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -233,6 +229,19 @@ fun WorkflowChip(
                 )
             }
         }
+    }
+}
+
+/** Small icon button (32dp) for compact action rows; dimmed when disabled. */
+@Composable
+fun SmallActionIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(32.dp)) {
+        Icon(icon, contentDescription = contentDescription, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -290,7 +299,7 @@ fun MetaLine(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Recent results (newest first, from the gallery) with a gallery button at the end.
+ * Recent results (newest first, from the gallery), optionally with a gallery button at the end.
  * Cells are square and share the row width equally.
  */
 @Composable
@@ -298,7 +307,8 @@ fun RecentResultsStrip(
     selectedKey: String?,
     onSelect: (GalleryItem) -> Unit,
     modifier: Modifier = Modifier,
-    count: Int = 6
+    count: Int = 6,
+    showGalleryButton: Boolean = true
 ) {
     val context = LocalContext.current
     val nav = LocalMainNav.current
@@ -337,7 +347,7 @@ fun RecentResultsStrip(
             }
         }
         // Gallery button
-        Column(
+        if (showGalleryButton) Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
             modifier = Modifier

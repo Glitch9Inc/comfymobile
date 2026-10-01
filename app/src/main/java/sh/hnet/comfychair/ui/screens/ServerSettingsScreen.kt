@@ -214,7 +214,7 @@ fun ServerSettingsScreen(
 private fun UsageMeter(label: String, used: Double, total: Double, modifier: Modifier = Modifier) {
     val ratio = (used / total).toFloat().coerceIn(0f, 1f)
     Column(modifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
             Text("%.1f / %.0f GB".format(used, total), fontSize = 11.5.sp, fontFamily = FontFamily.Monospace)

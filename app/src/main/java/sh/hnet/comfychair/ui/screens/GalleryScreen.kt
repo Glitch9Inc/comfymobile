@@ -458,6 +458,13 @@ fun GalleryScreen(
                     }
                 }
             }
+            // New album (fixed position, right of the sort button). Hidden while selecting:
+            // the row needs the room for "Select all", and the top bar has "Add to album"
+            if (!uiState.isSelectionMode) {
+                IconButton(onClick = { showNewAlbumDialog = true }) {
+                    Icon(Icons.Default.CreateNewFolder, contentDescription = stringResource(R.string.gallery_new_album))
+                }
+            }
             if (uiState.isSelectionMode && uiState.items.isNotEmpty()) {
                 val allSelected = uiState.items.all { itemKey(it) in uiState.selectedItems }
                 TextButton(
@@ -471,16 +478,12 @@ fun GalleryScreen(
             }
         }
 
-        // Album chips (scrollable) with a fixed "new album" button at the end
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        // Album chips
         Row(
             modifier = Modifier
-                .weight(1f)
+                .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(start = 8.dp),
+                .padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -509,10 +512,6 @@ fun GalleryScreen(
                     trailingIcon = editIcon
                 )
             }
-        }
-        IconButton(onClick = { showNewAlbumDialog = true }) {
-            Icon(Icons.Default.CreateNewFolder, contentDescription = stringResource(R.string.gallery_new_album))
-        }
         }
         HorizontalDivider()
 
