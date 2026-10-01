@@ -453,6 +453,21 @@ class GalleryRepository private constructor() {
      * Parse history JSON to gallery items.
      * Does NOT fetch bitmaps - those are loaded lazily via MediaCache.
      */
+    /**
+     * When a prompt ran, from its status messages ("execution_start"/"execution_success"
+     * carry a "timestamp" in ms). Returns 0 if the server does not report it.
+     */
+    private fun historyTimestamp(promptHistory: JSONObject): Long {
+        val messages = promptHistory.optJSONObject("status")?.optJSONArray("messages") ?: return 0L
+        var result = 0L
+        for (i in 0 until messages.length()) {
+            val message = messages.optJSONArray(i) ?: continue
+            val ts = message.optJSONObject(1)?.optLong("timestamp", 0L) ?: 0L
+            if (ts > result) result = ts
+        }
+        return result
+    }
+
     private fun parseHistoryToGalleryItems(historyJson: JSONObject): List<GalleryItem> {
         val items = mutableListOf<GalleryItem>()
         var index = 0
@@ -462,6 +477,7 @@ class GalleryRepository private constructor() {
             val promptId = promptIds.next()
             val promptHistory = historyJson.optJSONObject(promptId) ?: continue
             val outputs = promptHistory.optJSONObject("outputs") ?: continue
+            val timestamp = historyTimestamp(promptHistory)
 
             val nodeIds = outputs.keys()
             while (nodeIds.hasNext()) {
@@ -487,7 +503,8 @@ class GalleryRepository private constructor() {
                             subfolder = subfolder,
                             type = type,
                             isVideo = true,
-                            index = index++
+                            index = index++,
+                            timestamp = timestamp
                         ))
                     }
                 }
@@ -511,7 +528,8 @@ class GalleryRepository private constructor() {
                                 subfolder = subfolder,
                                 type = type,
                                 isVideo = true,
-                                index = index++
+                                index = index++,
+                                timestamp = timestamp
                             ))
                             continue
                         }
@@ -525,7 +543,8 @@ class GalleryRepository private constructor() {
                             subfolder = subfolder,
                             type = type,
                             isVideo = false,
-                            index = index++
+                            index = index++,
+                            timestamp = timestamp
                         ))
                     }
                 }

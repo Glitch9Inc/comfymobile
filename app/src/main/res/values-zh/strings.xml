@@ -668,4 +668,11 @@
     <string name="gallery_sort_oldest">最早优先</string>
     <string name="gallery_sort_name">名称</string>
     <string name="gallery_sort_type">图片优先</string>
+    <string name="gallery_date_today">今天</string>
+    <string name="gallery_date_yesterday">昨天</string>
+    <string name="gallery_date_unknown">日期未知</string>
+    <string name="media_viewer_reuse_prompt">重新使用提示词</string>
+    <string name="media_viewer_edit_image">编辑图片 (img2img)</string>
+    <string name="label_slideshow_seconds">幻灯片：每张 %1$d 秒</string>
+    <string name="error_image_not_ready">图片仍在加载</string>
 </resources>

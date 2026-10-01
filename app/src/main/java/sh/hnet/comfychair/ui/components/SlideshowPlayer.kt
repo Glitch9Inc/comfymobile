@@ -31,8 +31,6 @@ import kotlinx.coroutines.delay
 import sh.hnet.comfychair.cache.MediaCacheKey
 import sh.hnet.comfychair.viewmodel.MediaViewerItem
 
-/** How long each slide stays on screen (the Ken Burns motion runs over this time) */
-private const val SLIDE_DURATION_MS = 4000
 /** Cross-fade between slides */
 private const val FADE_DURATION_MS = 900
 
@@ -57,12 +55,14 @@ private enum class SlideMotion(
  * Plays from [startIndex] towards the start of the list (newest items in the gallery),
  * wrapping around to the end.
  *
+ * @param slideDurationMs How long each slide stays on screen (the zoom/pan runs over this time)
  * @param onStop Called with the index being shown when the user taps to stop
  */
 @Composable
 fun SlideshowPlayer(
     items: List<MediaViewerItem>,
     startIndex: Int,
+    slideDurationMs: Int,
     onStop: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -112,7 +112,7 @@ fun SlideshowPlayer(
                 if (bitmap != null) {
                     progress.animateTo(
                         1f,
-                        tween(SLIDE_DURATION_MS + FADE_DURATION_MS, easing = LinearEasing)
+                        tween(slideDurationMs + FADE_DURATION_MS, easing = LinearEasing)
                     )
                 }
             }
@@ -151,7 +151,7 @@ fun SlideshowPlayer(
     LaunchedEffect(slideCount, shownBitmap != null, shownLoading) {
         // Wait for the picture (skip it if it failed to load)
         if (shownBitmap == null && shownLoading) return@LaunchedEffect
-        delay(if (shownBitmap != null) SLIDE_DURATION_MS.toLong() else 500L)
+        delay(if (shownBitmap != null) slideDurationMs.toLong() else 500L)
         index = nextIndex(index)
         slideCount++
     }

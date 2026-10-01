@@ -68,6 +68,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import sh.hnet.comfychair.MediaViewerActivity
+import sh.hnet.comfychair.viewmodel.ViewerHandoff
 import sh.hnet.comfychair.R
 import sh.hnet.comfychair.ui.components.generate.ratioOf
 import sh.hnet.comfychair.ui.components.generate.FitAspectBox
@@ -323,6 +324,18 @@ fun TextToImageScreen(
     }
     val bottomSheetConfig = remember(uiState, callbacks) { uiState.toBottomSheetConfig(callbacks) }
 
+    // "Reuse prompt" from the media viewer
+    LaunchedEffect(Unit) {
+        ViewerHandoff.pending.collect { request ->
+            if (request is ViewerHandoff.Request.ReusePrompt) {
+                textToImageViewModel.onPositivePromptChange(request.positive)
+                request.negative?.let { textToImageViewModel.onNegativePromptChange(it) }
+                presetViewModel.clearActivePreset()
+                ViewerHandoff.consume(request)
+            }
+        }
+    }
+
     // Which recent result is shown in the preview (null = latest generation)
     var selectedRecent by remember { mutableStateOf<GalleryItem?>(null) }
 
@@ -503,80 +516,6 @@ fun TextToImageScreen(
         )
     }
 
-    val negativeLine: @Composable () -> Unit = {
-        if (caps.hasNegativePrompt) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-            ) {
-                Text("NEG", color = Brand.NegRed, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                Spacer(Modifier.width(8.dp))
-                BasicTextField(
-                    value = uiState.negativePrompt,
-                    onValueChange = textToImageViewModel::onNegativePromptChange,
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.weight(1f).padding(vertical = 6.dp)
-                )
-            }
-        }
-    }
-
-    val favoritesRow: @Composable () -> Unit = {
-        if (presetUiState.favorites.isNotEmpty()) {
-            ChipRow {
-                presetUiState.favorites.forEach { preset ->
-                    PillChip(preset.name, onClick = { presetViewModel.onPresetSelected(preset.id) }, leading = "★")
-                }
-            }
-        }
-    }
-
-    val ratioRow: @Composable () -> Unit = {
-        if (caps.hasWidth && caps.hasHeight) {
-            ResolutionPresetRow(
-                width = uiState.width,
-                height = uiState.height,
-                onSelect = { w, h ->
-                    textToImageViewModel.onWidthChange(w.toString())
-                    textToImageViewModel.onHeightChange(h.toString())
-                }
-            )
-        }
-    }
-
-    val paramsRow: @Composable () -> Unit = {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (caps.hasSteps) ParamTile(stringResource(R.string.label_steps), uiState.steps, { editParam = "steps" }, Modifier.weight(1f))
-            if (caps.hasCfg) ParamTile(stringResource(R.string.label_cfg), uiState.cfg, { editParam = "cfg" }, Modifier.weight(1f))
-            if (caps.hasSeed) ParamTile(
-                stringResource(R.string.label_seed),
-                if (uiState.randomSeed) "🎲" else uiState.seed,
-                { editParam = "seed" }, Modifier.weight(1f)
-            )
-            if (caps.hasSamplerName) ParamTile(stringResource(R.string.label_sampler), uiState.sampler, { editParam = "sampler" }, Modifier.weight(1f))
-            ParamTile(stringResource(R.string.label_more), "⋯", { showOptionsBottomSheet = true }, Modifier.weight(0.8f))
-        }
-    }
-
-    val loraRow: @Composable () -> Unit = {
-        if (caps.hasLora) {
-            ChipRow {
-                uiState.loraChain.forEach { lora ->
-                    PillChip(
-                        "${lora.name.substringAfterLast('/').substringBeforeLast('.')}  ${"%.1f".format(lora.strength)}",
-                        onClick = { showOptionsBottomSheet = true }, accent = true
-                    )
-                }
-                PillChip("+ LoRA", onClick = {
-                    textToImageViewModel.onAddLora()
-                    showOptionsBottomSheet = true
-                }, dashed = true)
-            }
-        }
-    }
-
     val generateRow: @Composable () -> Unit = {
         Row(Modifier.fillMaxWidth().height(56.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GenerationButton(
@@ -599,10 +538,8 @@ fun TextToImageScreen(
                 },
                 modifier = Modifier.weight(1f)
             )
-            if (caps.hasBatchSize) {
-                BatchTile(uiState.batchSize, textToImageViewModel::onBatchSizeChange, Modifier.fillMaxHeight())
-            }
-            // All workflow settings (models, LoRA, sampler, ...) in the options sheet
+            // Main screen shows only the prompt; every other setting (negative prompt, size,
+            // steps, LoRA, batch, ...) is in the options sheet
             OutlinedIconButton(
                 onClick = { showOptionsBottomSheet = true },
                 modifier = Modifier.size(56.dp)
@@ -686,16 +623,9 @@ fun TextToImageScreen(
                                 if (expandPrompt) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth(),
                                 expandPrompt
                             )
-                            negativeLine()
                         }
                     }
 
-                    if (!expandPrompt) {
-                        favoritesRow()
-                        ratioRow()
-                        paramsRow()
-                        loraRow()
-                    }
                     generateRow()
                 }
             }
@@ -773,15 +703,7 @@ fun TextToImageScreen(
                     GenCard(Modifier.fillMaxWidth().weight(1f)) {
                         Column(Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp)) {
                             promptField(Modifier.fillMaxWidth().weight(1f), true)
-                            negativeLine()
                         }
-                    }
-                    // While typing, keep only the prompt + generate so the keyboard never hides the field
-                    if (!expandPrompt) {
-                        favoritesRow()
-                        ratioRow()
-                        paramsRow()
-                        loraRow()
                     }
                     generateRow()
                 }

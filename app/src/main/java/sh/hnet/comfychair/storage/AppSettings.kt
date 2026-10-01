@@ -244,6 +244,24 @@ object AppSettings {
     }
 
     private const val KEY_GALLERY_SORT_ORDER = "gallery_sort_order"
+    private const val KEY_SLIDESHOW_SECONDS = "slideshow_seconds"
+    const val SLIDESHOW_SECONDS_DEFAULT = 4
+    const val SLIDESHOW_SECONDS_MIN = 2
+    const val SLIDESHOW_SECONDS_MAX = 20
+
+    /** Seconds each picture stays on screen in the slideshow. */
+    fun getSlideshowSeconds(context: Context): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_SLIDESHOW_SECONDS, SLIDESHOW_SECONDS_DEFAULT)
+            .coerceIn(SLIDESHOW_SECONDS_MIN, SLIDESHOW_SECONDS_MAX)
+    }
+
+    fun setSlideshowSeconds(context: Context, seconds: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(KEY_SLIDESHOW_SECONDS, seconds.coerceIn(SLIDESHOW_SECONDS_MIN, SLIDESHOW_SECONDS_MAX))
+            .apply()
+    }
 
     /** Gallery sort order name (see GallerySortOrder). */
     fun getGallerySortOrder(context: Context): String? {

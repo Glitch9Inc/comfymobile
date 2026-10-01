@@ -29,6 +29,13 @@ import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.platform.LocalView
 import sh.hnet.comfychair.ui.components.SlideshowPlayer
+import sh.hnet.comfychair.storage.AppSettings
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.filled.AutoFixHigh
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.Info
@@ -80,6 +87,7 @@ import sh.hnet.comfychair.viewmodel.ViewerMode
 fun MediaViewerScreen(
     viewModel: MediaViewerViewModel,
     onClose: () -> Unit,
+    onOpenGeneration: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -127,6 +135,9 @@ fun MediaViewerScreen(
                 }
                 is MediaViewerEvent.Close -> {
                     onClose()
+                }
+                is MediaViewerEvent.OpenGeneration -> {
+                    onOpenGeneration()
                 }
             }
         }
@@ -285,6 +296,7 @@ fun MediaViewerScreen(
             SlideshowPlayer(
                 items = uiState.items,
                 startIndex = uiState.currentIndex,
+                slideDurationMs = remember { AppSettings.getSlideshowSeconds(context) * 1000 },
                 onStop = { index -> viewModel.stopSlideshow(index) }
             )
             BackHandler { viewModel.stopSlideshow(uiState.currentIndex) }
@@ -335,6 +347,32 @@ fun MediaViewerScreen(
                 onShare = { viewModel.shareCurrentItem() },
                 onInfo = { showMetadataSheet = true }
             )
+        }
+
+        // Reuse prompt / edit image (above the toolbar)
+        AnimatedVisibility(
+            visible = uiState.isUiVisible && !uiState.isSlideshowPlaying,
+            enter = fadeIn(animationSpec = tween(250)),
+            exit = fadeOut(animationSpec = tween(250)),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = toolbarBottomPadding + 76.dp)
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilledTonalButton(onClick = { viewModel.reusePrompt() }) {
+                    Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(stringResource(R.string.media_viewer_reuse_prompt))
+                }
+                if (uiState.currentItem?.isVideo != true) {
+                    FilledTonalButton(onClick = { viewModel.editImage() }) {
+                        Icon(Icons.Default.AutoFixHigh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.media_viewer_edit_image))
+                    }
+                }
+            }
         }
 
         // Back FAB

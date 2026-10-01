@@ -31,8 +31,12 @@ object LocalGalleryStore {
         val item: GalleryItem,
         val seq: Long,
         var downloaded: Boolean,
-        var savedToPhone: Boolean
-    )
+        var savedToPhone: Boolean,
+        /** When it was generated (ms since epoch), 0 if unknown */
+        var time: Long = 0L
+    ) {
+        fun toItem() = item.copy(index = seq.toInt(), timestamp = time)
+    }
 
     // serverId -> (keyString -> entry)
     private val indexes = mutableMapOf<String, LinkedHashMap<String, Entry>>()
@@ -70,8 +74,12 @@ object LocalGalleryStore {
                     isVideo = o.optBoolean("isVideo", false),
                     index = seq.toInt()
                 )
-                map[item.toCacheKey().keyString] =
-                    Entry(item, seq, o.optBoolean("downloaded"), o.optBoolean("savedToPhone"))
+                val key = item.toCacheKey().keyString
+                // Older indexes have no time: use the local copy's date as an approximation
+                val time = o.optLong("time", 0L).takeIf { it > 0 }
+                    ?: File(serverDir(context, serverId), safeName(key)).takeIf { it.exists() }?.lastModified()
+                    ?: 0L
+                map[key] = Entry(item, seq, o.optBoolean("downloaded"), o.optBoolean("savedToPhone"), time)
             }
         } catch (e: Exception) {
             DebugLogger.e(TAG, "Failed to load index: ${e.message}")
@@ -92,6 +100,7 @@ object LocalGalleryStore {
                     put("seq", e.seq)
                     put("downloaded", e.downloaded)
                     put("savedToPhone", e.savedToPhone)
+                    put("time", e.time)
                 })
             }
             val f = File(serverDir(context, serverId), INDEX_FILE)
@@ -115,14 +124,21 @@ object LocalGalleryStore {
             // Oldest first so newer items get higher sequence numbers
             for (item in serverItems.asReversed()) {
                 val k = item.toCacheKey().keyString
-                if (k !in idx) idx[k] = Entry(item, nextSeq++, downloaded = false, savedToPhone = false)
+                val existing = idx[k]
+                if (existing == null) {
+                    val time = item.timestamp.takeIf { it > 0 } ?: System.currentTimeMillis()
+                    idx[k] = Entry(item, nextSeq++, downloaded = false, savedToPhone = false, time = time)
+                } else if (item.timestamp > 0) {
+                    // The server's time is exact; prefer it over an approximation
+                    existing.time = item.timestamp
+                }
             }
             persist(context, serverId)
             val onServer = serverItems.map { it.toCacheKey().keyString }.toHashSet()
             idx.values
                 .filter { it.downloaded || it.item.toCacheKey().keyString in onServer }
                 .sortedByDescending { it.seq }
-                .map { it.item.copy(index = it.seq.toInt()) }
+                .map { it.toItem() }
         }
 
     /** Items available on device only (for offline mode). */
@@ -130,7 +146,7 @@ object LocalGalleryStore {
         index(context, serverId).values
             .filter { it.downloaded }
             .sortedByDescending { it.seq }
-            .map { it.item.copy(index = it.seq.toInt()) }
+            .map { it.toItem() }
     }
 
     /**

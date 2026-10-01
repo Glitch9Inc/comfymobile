@@ -668,4 +668,11 @@
     <string name="gallery_sort_oldest">Más antiguos primero</string>
     <string name="gallery_sort_name">Nombre</string>
     <string name="gallery_sort_type">Imágenes primero</string>
+    <string name="gallery_date_today">Hoy</string>
+    <string name="gallery_date_yesterday">Ayer</string>
+    <string name="gallery_date_unknown">Fecha desconocida</string>
+    <string name="media_viewer_reuse_prompt">Reutilizar prompt</string>
+    <string name="media_viewer_edit_image">Editar imagen (img2img)</string>
+    <string name="label_slideshow_seconds">Presentación: %1$d s por imagen</string>
+    <string name="error_image_not_ready">La imagen aún se está cargando</string>
 </resources>

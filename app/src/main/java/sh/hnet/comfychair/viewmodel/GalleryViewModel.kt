@@ -40,7 +40,9 @@ data class GalleryItem(
     val subfolder: String,
     val type: String,
     val isVideo: Boolean,
-    val index: Int = 0 // For sorting
+    val index: Int = 0, // For sorting
+    /** When it was generated (ms since epoch), 0 if unknown */
+    val timestamp: Long = 0L
 ) {
     /** Create a cache key for this item */
     fun toCacheKey() = MediaCacheKey(promptId, filename)

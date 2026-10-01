@@ -122,6 +122,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import sh.hnet.comfychair.viewmodel.GallerySortOrder
+import androidx.compose.material.icons.filled.CreateNewFolder
 import sh.hnet.comfychair.ui.components.gallerySelectGestures
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -268,6 +269,11 @@ fun GalleryScreen(
         },
         onSelectionChange = { galleryViewModel.setSelection(it) }
     ) }
+
+    // Items split into days (one group without a header when sorted by name/type)
+    val dateGroups = remember(uiState.items, uiState.sortOrder) {
+        groupByDay(uiState.items, byDate = uiState.sortOrder == GallerySortOrder.NEWEST || uiState.sortOrder == GallerySortOrder.OLDEST)
+    }
 
     // Auto-scroll while drag-selecting near the top/bottom edge
     LaunchedEffect(dragSelectState.autoScrollSpeed) {
@@ -465,12 +471,16 @@ fun GalleryScreen(
             }
         }
 
-        // Album chips
+        // Album chips (scrollable) with a fixed "new album" button at the end
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
         Row(
             modifier = Modifier
-                .fillMaxWidth()
+                .weight(1f)
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp),
+                .padding(start = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -499,11 +509,10 @@ fun GalleryScreen(
                     trailingIcon = editIcon
                 )
             }
-            AssistChip(
-                onClick = { showNewAlbumDialog = true },
-                label = { Text(stringResource(R.string.gallery_new_album)) },
-                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp)) }
-            )
+        }
+        IconButton(onClick = { showNewAlbumDialog = true }) {
+            Icon(Icons.Default.CreateNewFolder, contentDescription = stringResource(R.string.gallery_new_album))
+        }
         }
         HorizontalDivider()
 
@@ -562,8 +571,12 @@ fun GalleryScreen(
                         }
                     }
                 } else {
-                    // Gallery items
-                    itemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { _, item ->
+                    // Gallery items, grouped by day
+                    dateGroups.forEach { group ->
+                        item(key = "header_${group.day}", span = StaggeredGridItemSpan.FullLine) {
+                            DateGroupHeader(group, uiState.selectedItems, ::itemKey) { galleryViewModel.setSelection(it) }
+                        }
+                        itemsIndexed(group.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { _, item ->
                         val key = "${item.promptId}_${item.filename}"
                         GalleryItemCard(
                             item = item,
@@ -571,6 +584,7 @@ fun GalleryScreen(
                             isOfflineMode = isOfflineMode,
                             square = viewMode.square
                         )
+                    }
                     }
                 }
                 }
@@ -622,8 +636,12 @@ fun GalleryScreen(
                         }
                     }
                 } else {
-                    // Gallery items
-                    gridItemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { _, item ->
+                    // Gallery items, grouped by day
+                    dateGroups.forEach { group ->
+                        item(key = "header_${group.day}", span = { GridItemSpan(maxLineSpan) }) {
+                            DateGroupHeader(group, uiState.selectedItems, ::itemKey) { galleryViewModel.setSelection(it) }
+                        }
+                        gridItemsIndexed(group.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { _, item ->
                         val key = "${item.promptId}_${item.filename}"
                         GalleryItemCard(
                             item = item,
@@ -631,6 +649,7 @@ fun GalleryScreen(
                             isOfflineMode = isOfflineMode,
                             square = viewMode.square
                         )
+                    }
                     }
                 }
                 }
@@ -683,6 +702,81 @@ fun GalleryScreen(
             },
             onDismiss = { showAddToAlbumDialog = false }
         )
+    }
+}
+
+/** Items generated on the same day. [day] = epoch day, or null for no header. */
+private class DateGroup(val day: Long?, val items: List<GalleryItem>)
+
+/** Split [items] (already sorted) into runs of the same local day. */
+private fun groupByDay(items: List<GalleryItem>, byDate: Boolean): List<DateGroup> {
+    if (!byDate || items.isEmpty()) return listOf(DateGroup(null, items))
+    val zone = java.time.ZoneId.systemDefault()
+    val groups = mutableListOf<DateGroup>()
+    var currentDay: Long? = null
+    var current = mutableListOf<GalleryItem>()
+    for (item in items) {
+        val day = if (item.timestamp > 0) {
+            java.time.Instant.ofEpochMilli(item.timestamp).atZone(zone).toLocalDate().toEpochDay()
+        } else UNKNOWN_DAY
+        if (day != currentDay && current.isNotEmpty()) {
+            groups += DateGroup(currentDay, current)
+            current = mutableListOf()
+        }
+        currentDay = day
+        current += item
+    }
+    groups += DateGroup(currentDay, current)
+    return groups
+}
+
+private const val UNKNOWN_DAY = Long.MIN_VALUE
+
+/**
+ * Day header ("Today", "Yesterday", or the date) with a select-all / deselect button
+ * for that day's items. Nothing is shown for a group without a day.
+ */
+@Composable
+private fun DateGroupHeader(
+    group: DateGroup,
+    selected: Set<String>,
+    keyOf: (GalleryItem) -> String,
+    onSelectionChange: (Set<String>) -> Unit
+) {
+    val day = group.day ?: return
+    val label = when {
+        day == UNKNOWN_DAY -> stringResource(R.string.gallery_date_unknown)
+        else -> {
+            val date = java.time.LocalDate.ofEpochDay(day)
+            val today = java.time.LocalDate.now()
+            when (date) {
+                today -> stringResource(R.string.gallery_date_today)
+                today.minusDays(1) -> stringResource(R.string.gallery_date_yesterday)
+                else -> {
+                    val locale = java.util.Locale.getDefault()
+                    val skeleton = if (date.year == today.year) "MMMdEEE" else "yMMMdEEE"
+                    val pattern = android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton)
+                    date.format(java.time.format.DateTimeFormatter.ofPattern(pattern, locale))
+                }
+            }
+        }
+    }
+    val keys = group.items.map(keyOf)
+    val allSelected = keys.isNotEmpty() && keys.all { it in selected }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = { onSelectionChange(if (allSelected) selected - keys.toSet() else selected + keys) }) {
+            Text(stringResource(if (allSelected) R.string.gallery_deselect_all else R.string.gallery_select_all))
+        }
     }
 }
 
