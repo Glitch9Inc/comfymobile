@@ -245,6 +245,24 @@ object AppSettings {
 
     private const val KEY_GALLERY_SORT_ORDER = "gallery_sort_order"
     private const val KEY_SLIDESHOW_SECONDS = "slideshow_seconds"
+    private const val KEY_CURRENT_ALBUM_PREFIX = "current_album_"
+
+    /** Album selected for generation/gallery on a server, or null for none. */
+    fun getCurrentAlbumId(context: Context, serverId: String): String? {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_CURRENT_ALBUM_PREFIX + serverId, null)
+    }
+
+    fun setCurrentAlbumId(context: Context, serverId: String, albumId: String?) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .apply {
+                if (albumId == null) remove(KEY_CURRENT_ALBUM_PREFIX + serverId)
+                else putString(KEY_CURRENT_ALBUM_PREFIX + serverId, albumId)
+            }
+            .apply()
+    }
+
     const val SLIDESHOW_SECONDS_DEFAULT = 4
     const val SLIDESHOW_SECONDS_MIN = 2
     const val SLIDESHOW_SECONDS_MAX = 20

@@ -673,4 +673,9 @@
     <string name="media_viewer_edit_image">Bild bearbeiten (img2img)</string>
     <string name="label_slideshow_seconds">Diashow: %1$d s pro Bild</string>
     <string name="error_image_not_ready">Das Bild wird noch geladen</string>
+    <string name="gallery_view_mode">Ansicht</string>
+    <string name="gallery_tab_photos">Fotos</string>
+    <string name="gallery_tab_albums">Alben</string>
+    <string name="gallery_album_item_count">%1$d Elemente</string>
+    <string name="label_no_album">Kein Album</string>
 </resources>

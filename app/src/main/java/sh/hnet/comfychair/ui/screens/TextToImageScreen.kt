@@ -75,6 +75,9 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import sh.hnet.comfychair.MediaViewerActivity
+import sh.hnet.comfychair.ui.components.generate.AlbumDropdown
+import sh.hnet.comfychair.ui.components.generate.WorkflowSplitDropdown
+import sh.hnet.comfychair.repository.AlbumRepository
 import sh.hnet.comfychair.viewmodel.ViewerHandoff
 import sh.hnet.comfychair.R
 import sh.hnet.comfychair.ui.components.generate.ratioOf
@@ -343,6 +346,12 @@ fun TextToImageScreen(
         }
     }
 
+    // Album new images go into (shared with the gallery)
+    LaunchedEffect(Unit) { AlbumRepository.ensureLoaded(context) }
+    val albums by AlbumRepository.albums.collectAsState()
+    val currentAlbumId by AlbumRepository.currentAlbumId.collectAsState()
+    val currentAlbum = albums.firstOrNull { it.id == currentAlbumId }
+
     // Which recent result is shown in the preview (null = latest generation)
     var selectedRecent by remember { mutableStateOf<GalleryItem?>(null) }
 
@@ -359,7 +368,9 @@ fun TextToImageScreen(
             return
         }
         selectedRecent = null
-        generationViewModel.startGeneration(workflowJson, TextToImageViewModel.OWNER_ID, front = front) { success, _, errorMessage ->
+        generationViewModel.startGeneration(workflowJson, TextToImageViewModel.OWNER_ID, front = front) { success, promptId, errorMessage ->
+            // Images from this prompt go into the selected album
+            if (success && promptId != null) AlbumRepository.addPromptToCurrent(promptId)
             if (!success) {
                 Toast.makeText(context, errorMessage ?: context.getString(R.string.error_generation_failed), Toast.LENGTH_LONG).show()
             }
@@ -445,14 +456,28 @@ fun TextToImageScreen(
         }
     }
 
-    val workflowChip: @Composable (Modifier) -> Unit = { m ->
-        WorkflowChip(
+    // Workflow name + chevron, with the workflow settings button as the right part
+    val workflowDropdown: @Composable (Modifier) -> Unit = { m ->
+        WorkflowSplitDropdown(
             workflows = uiState.availableWorkflows.map { it.name },
             selected = uiState.selectedWorkflow,
             onSelect = textToImageViewModel::onWorkflowChange,
+            onSettings = { showOptionsBottomSheet = true },
+            settingsDescription = stringResource(R.string.button_options),
             modifier = m
         )
     }
+
+    val albumDropdown: @Composable () -> Unit = {
+        AlbumDropdown(
+            albums = albums,
+            selectedId = currentAlbumId,
+            onSelect = { AlbumRepository.select(it) }
+        )
+    }
+
+    // Loading UI: ring = steps of the running image; text = finished images / images in this batch
+    val batchLabel = if (queueState.batchTotal > 0) "${queueState.completedInBatch}/${queueState.batchTotal}" else null
 
     // Save / share / copy settings as small icons; always shown, greyed out until there is an image
     val imageActions: @Composable () -> Unit = {
@@ -485,12 +510,6 @@ fun TextToImageScreen(
         }
     }
 
-    // Workflow settings (models, negative prompt, steps, LoRA, ...) next to the workflow dropdown
-    val optionsButton: @Composable () -> Unit = {
-        IconButton(onClick = { showOptionsBottomSheet = true }) {
-            Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.button_options))
-        }
-    }
 
     // Portrait / Square / Landscape
     val ratioRow: @Composable () -> Unit = {
@@ -620,13 +639,20 @@ fun TextToImageScreen(
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 6.dp)
                 ) {
-                    workflowChip(Modifier.weight(1f, fill = false))
-                    optionsButton()
-                    Spacer(Modifier.weight(1f))
                     ModeMenuButton()
+                    Spacer(Modifier.weight(1f))
                     serverMenu()
+                }
+                // Workflow and album on their own row (not enough width next to the mode button)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 8.dp)
+                ) {
+                    workflowDropdown(Modifier.weight(1f))
+                    albumDropdown()
                 }
 
                 Column(
@@ -654,7 +680,7 @@ fun TextToImageScreen(
                                     contentScale = ContentScale.Fit
                                 )
                             }
-                            ProgressPill(generationState.progress, generationState.maxProgress, Modifier.align(Alignment.TopStart).padding(10.dp), active = progressVisible)
+                            ProgressPill(generationState.progress, generationState.maxProgress, Modifier.align(Alignment.TopStart).padding(10.dp), active = progressVisible, label = batchLabel)
                         }
                         }
 
@@ -662,7 +688,8 @@ fun TextToImageScreen(
                         RecentResultsStrip(
                             selectedKey = selectedRecent?.toCacheKey()?.keyString,
                             onSelect = { showRecent(it) },
-                            showGalleryButton = false
+                            showGalleryButton = false,
+                            album = currentAlbum
                         )
                     }
 
@@ -696,7 +723,7 @@ fun TextToImageScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().padding(14.dp)
                         ) {
-                            ProgressPill(generationState.progress, generationState.maxProgress, translucent = false, active = progressVisible)
+                            ProgressPill(generationState.progress, generationState.maxProgress, translucent = false, active = progressVisible, label = batchLabel)
                             Spacer(Modifier.width(12.dp))
                             ModeTabs(Modifier.weight(1f))
                         }
@@ -723,7 +750,8 @@ fun TextToImageScreen(
                             RecentResultsStrip(
                                 selectedKey = selectedRecent?.toCacheKey()?.keyString,
                                 onSelect = { showRecent(it) },
-                                showGalleryButton = false
+                                showGalleryButton = false,
+                                album = currentAlbum
                             )
                         }
                     }
@@ -734,10 +762,13 @@ fun TextToImageScreen(
                     Modifier.weight(0.85f).fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        workflowChip(Modifier.weight(1f, fill = false))
-                        optionsButton()
-                        Spacer(Modifier.weight(1f))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        workflowDropdown(Modifier.weight(1f))
+                        albumDropdown()
                         serverMenu()
                     }
                     GenCard(Modifier.fillMaxWidth().weight(1f)) {

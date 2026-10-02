@@ -675,4 +675,9 @@
     <string name="media_viewer_edit_image">Edytuj obraz (img2img)</string>
     <string name="label_slideshow_seconds">Pokaz slajdów: %1$d s na obraz</string>
     <string name="error_image_not_ready">Obraz wciąż się wczytuje</string>
+    <string name="gallery_view_mode">Widok</string>
+    <string name="gallery_tab_photos">Zdjęcia</string>
+    <string name="gallery_tab_albums">Albumy</string>
+    <string name="gallery_album_item_count">Elementy: %1$d</string>
+    <string name="label_no_album">Bez albumu</string>
 </resources>

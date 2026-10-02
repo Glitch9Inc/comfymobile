@@ -675,4 +675,9 @@
     <string name="media_viewer_edit_image">Modifier l’image (img2img)</string>
     <string name="label_slideshow_seconds">Diaporama : %1$d s par image</string>
     <string name="error_image_not_ready">L’image est encore en cours de chargement</string>
+    <string name="gallery_view_mode">Affichage</string>
+    <string name="gallery_tab_photos">Photos</string>
+    <string name="gallery_tab_albums">Albums</string>
+    <string name="gallery_album_item_count">%1$d éléments</string>
+    <string name="label_no_album">Aucun album</string>
 </resources>

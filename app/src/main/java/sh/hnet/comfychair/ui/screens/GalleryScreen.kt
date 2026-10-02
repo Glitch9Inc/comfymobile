@@ -117,6 +117,15 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.round
 import sh.hnet.comfychair.ui.components.DragSelectState
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
+import androidx.compose.ui.text.style.TextOverflow
+import sh.hnet.comfychair.viewmodel.GallerySection
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
@@ -348,12 +357,13 @@ fun GalleryScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
+        val inAlbum = uiState.section == GallerySection.ALBUMS && selectedAlbum != null
+        val showAlbumList = uiState.section == GallerySection.ALBUMS && selectedAlbum == null
         TopAppBar(
             title = {
-                if (uiState.isSelectionMode) {
-                    Text(stringResource(R.string.gallery_selected_count, uiState.selectedItems.size))
-                } else {
-                    Text(stringResource(R.string.title_gallery))
+                when {
+                    uiState.isSelectionMode -> Text(stringResource(R.string.gallery_selected_count, uiState.selectedItems.size))
+                    inAlbum -> Text(selectedAlbum!!.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             },
             windowInsets = WindowInsets(0, 0, 0, 0),
@@ -362,11 +372,24 @@ fun GalleryScreen(
                     IconButton(onClick = { galleryViewModel.clearSelection() }) {
                         Icon(Icons.Default.Close, contentDescription = stringResource(R.string.button_cancel_selection))
                     }
+                } else if (inAlbum) {
+                    IconButton(onClick = { galleryViewModel.selectAlbum(null) }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.content_description_back))
+                    }
                 }
             },
             actions = {
                 if (uiState.isSelectionMode) {
-                    // Selection mode actions: Delete, Save, and Share
+                    // Select all / deselect all (the shown items)
+                    val allSelected = uiState.items.isNotEmpty() && uiState.items.all { itemKey(it) in uiState.selectedItems }
+                    IconButton(onClick = {
+                        if (allSelected) galleryViewModel.setSelection(emptySet()) else galleryViewModel.selectAll()
+                    }) {
+                        Icon(
+                            if (allSelected) Icons.Default.Deselect else Icons.Default.SelectAll,
+                            contentDescription = stringResource(if (allSelected) R.string.gallery_deselect_all else R.string.gallery_select_all)
+                        )
+                    }
                     IconButton(onClick = { galleryViewModel.deleteSelected() }) {
                         Icon(
                             Icons.Default.Delete,
@@ -377,8 +400,8 @@ fun GalleryScreen(
                     IconButton(onClick = { showAddToAlbumDialog = true }) {
                         Icon(Icons.Default.LibraryAdd, contentDescription = stringResource(R.string.gallery_add_to_album))
                     }
-                    if (selectedAlbum != null) {
-                        IconButton(onClick = { galleryViewModel.removeSelectedFromAlbum(selectedAlbum.id) }) {
+                    if (inAlbum) {
+                        IconButton(onClick = { galleryViewModel.removeSelectedFromAlbum(selectedAlbum!!.id) }) {
                             Icon(Icons.Default.RemoveCircleOutline, contentDescription = stringResource(R.string.gallery_remove_from_album))
                         }
                     }
@@ -389,16 +412,72 @@ fun GalleryScreen(
                         Icon(Icons.Default.Share, contentDescription = stringResource(R.string.button_share))
                     }
                 } else {
-                    // Normal mode actions: Slideshow, Select and Menu
-                    IconButton(
-                        // Slideshow plays towards the top of the list, so start from the last item
-                        onClick = { launchMediaViewer(uiState.items.lastIndex, startSlideshow = true) },
-                        enabled = uiState.items.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.Slideshow, contentDescription = stringResource(R.string.gallery_slideshow))
+                    if (!showAlbumList) {
+                        // View mode menu (2/3/4 columns, original ratio, single column)
+                        Box {
+                            var showViewMenu by remember { mutableStateOf(false) }
+                            IconButton(onClick = { showViewMenu = true }) {
+                                Icon(viewModeIcon(viewMode), contentDescription = stringResource(R.string.gallery_view_mode))
+                            }
+                            DropdownMenu(expanded = showViewMenu, onDismissRequest = { showViewMenu = false }) {
+                                GalleryViewMode.entries.forEach { mode ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(viewModeLabel(mode))) },
+                                        onClick = {
+                                            galleryViewModel.setViewMode(mode)
+                                            showViewMenu = false
+                                        },
+                                        leadingIcon = { Icon(viewModeIcon(mode), contentDescription = null) },
+                                        trailingIcon = { if (mode == viewMode) Icon(Icons.Default.Check, contentDescription = null) }
+                                    )
+                                }
+                            }
+                        }
+                        // Sort order menu
+                        Box {
+                            var showSortMenu by remember { mutableStateOf(false) }
+                            IconButton(onClick = { showSortMenu = true }) {
+                                Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.gallery_sort))
+                            }
+                            DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
+                                listOf(
+                                    GallerySortOrder.NEWEST to R.string.gallery_sort_newest,
+                                    GallerySortOrder.OLDEST to R.string.gallery_sort_oldest,
+                                    GallerySortOrder.NAME to R.string.gallery_sort_name,
+                                    GallerySortOrder.TYPE to R.string.gallery_sort_type
+                                ).forEach { (order, labelRes) ->
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(labelRes)) },
+                                        onClick = {
+                                            galleryViewModel.setSortOrder(order)
+                                            showSortMenu = false
+                                        },
+                                        trailingIcon = { if (uiState.sortOrder == order) Icon(Icons.Default.Check, contentDescription = null) }
+                                    )
+                                }
+                            }
+                        }
                     }
-                    IconButton(onClick = { galleryViewModel.enterSelectionMode() }) {
-                        Icon(Icons.Default.Checklist, contentDescription = stringResource(R.string.button_gallery_select))
+                    if (inAlbum) {
+                        IconButton(onClick = { editingAlbum = selectedAlbum }) {
+                            Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.gallery_edit_album))
+                        }
+                    } else {
+                        IconButton(onClick = { showNewAlbumDialog = true }) {
+                            Icon(Icons.Default.CreateNewFolder, contentDescription = stringResource(R.string.gallery_new_album))
+                        }
+                    }
+                    if (!showAlbumList) {
+                        IconButton(
+                            // Slideshow plays towards the top of the list, so start from the last item
+                            onClick = { launchMediaViewer(uiState.items.lastIndex, startSlideshow = true) },
+                            enabled = uiState.items.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Slideshow, contentDescription = stringResource(R.string.gallery_slideshow))
+                        }
+                        IconButton(onClick = { galleryViewModel.enterSelectionMode() }) {
+                            Icon(Icons.Default.Checklist, contentDescription = stringResource(R.string.button_gallery_select))
+                        }
                     }
                     AppMenuDropdown(
                         onSettings = onNavigateToSettings,
@@ -408,113 +487,38 @@ fun GalleryScreen(
             }
         )
 
-        // View mode switcher
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val modes = listOf(
-                Triple(GalleryViewMode.GRID_2, Icons.Default.GridView, R.string.gallery_view_grid_2),
-                Triple(GalleryViewMode.GRID_3, Icons.Default.Apps, R.string.gallery_view_grid_3),
-                Triple(GalleryViewMode.GRID_4, Icons.Default.ViewComfy, R.string.gallery_view_grid_4),
-                Triple(GalleryViewMode.MASONRY, Icons.Default.Dashboard, R.string.gallery_view_masonry),
-                Triple(GalleryViewMode.SINGLE, Icons.Default.ViewAgenda, R.string.gallery_view_single)
-            )
-            modes.forEach { (mode, icon, labelRes) ->
-                ViewModeButton(
-                    icon = icon,
-                    label = stringResource(labelRes),
-                    selected = viewMode == mode,
-                    onClick = { galleryViewModel.setViewMode(mode) }
+        // Photos / Albums (hidden inside an album, where the app bar has a back button)
+        if (!inAlbum) {
+            PrimaryTabRow(selectedTabIndex = uiState.section.ordinal) {
+                Tab(
+                    selected = uiState.section == GallerySection.PHOTOS,
+                    onClick = { galleryViewModel.setSection(GallerySection.PHOTOS) },
+                    text = { Text(stringResource(R.string.gallery_tab_photos)) }
+                )
+                Tab(
+                    selected = uiState.section == GallerySection.ALBUMS,
+                    onClick = { galleryViewModel.setSection(GallerySection.ALBUMS) },
+                    text = { Text(stringResource(R.string.gallery_tab_albums)) }
                 )
             }
-            Spacer(modifier = Modifier.weight(1f))
-            // Sort order menu
-            Box {
-                var showSortMenu by remember { mutableStateOf(false) }
-                IconButton(onClick = { showSortMenu = true }) {
-                    Icon(Icons.AutoMirrored.Filled.Sort, contentDescription = stringResource(R.string.gallery_sort))
-                }
-                DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
-                    listOf(
-                        GallerySortOrder.NEWEST to R.string.gallery_sort_newest,
-                        GallerySortOrder.OLDEST to R.string.gallery_sort_oldest,
-                        GallerySortOrder.NAME to R.string.gallery_sort_name,
-                        GallerySortOrder.TYPE to R.string.gallery_sort_type
-                    ).forEach { (order, labelRes) ->
-                        DropdownMenuItem(
-                            text = { Text(stringResource(labelRes)) },
-                            onClick = {
-                                galleryViewModel.setSortOrder(order)
-                                showSortMenu = false
-                            },
-                            leadingIcon = {
-                                if (uiState.sortOrder == order) Icon(Icons.Default.Check, contentDescription = null)
-                                else Spacer(Modifier.size(24.dp))
-                            }
-                        )
-                    }
-                }
-            }
-            // New album (fixed position, right of the sort button). Hidden while selecting:
-            // the row needs the room for "Select all", and the top bar has "Add to album"
-            if (!uiState.isSelectionMode) {
-                IconButton(onClick = { showNewAlbumDialog = true }) {
-                    Icon(Icons.Default.CreateNewFolder, contentDescription = stringResource(R.string.gallery_new_album))
-                }
-            }
-            if (uiState.isSelectionMode && uiState.items.isNotEmpty()) {
-                val allSelected = uiState.items.all { itemKey(it) in uiState.selectedItems }
-                TextButton(
-                    onClick = {
-                        if (allSelected) galleryViewModel.setSelection(emptySet())
-                        else galleryViewModel.selectAll()
-                    }
-                ) {
-                    Text(stringResource(if (allSelected) R.string.gallery_deselect_all else R.string.gallery_select_all))
-                }
-            }
+        } else {
+            HorizontalDivider()
         }
 
-        // Album chips
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FilterChip(
-                selected = selectedAlbum == null,
-                onClick = { galleryViewModel.selectAlbum(null) },
-                label = { Text("${stringResource(R.string.gallery_album_all)} (${uiState.totalCount})") }
+        // Back: leave selection mode, then the opened album
+        BackHandler(enabled = uiState.isSelectionMode || inAlbum) {
+            if (uiState.isSelectionMode) galleryViewModel.clearSelection() else galleryViewModel.selectAlbum(null)
+        }
+
+        if (showAlbumList) {
+            AlbumGrid(
+                albums = uiState.albums,
+                counts = uiState.albumCounts,
+                covers = uiState.albumCovers,
+                onOpen = { galleryViewModel.selectAlbum(it) },
+                onNewAlbum = { showNewAlbumDialog = true }
             )
-            uiState.albums.forEach { album ->
-                val isSelected = album.id == selectedAlbum?.id
-                val editIcon: (@Composable () -> Unit)? = if (isSelected) {
-                    {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = stringResource(R.string.gallery_edit_album),
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clickable { editingAlbum = album }
-                        )
-                    }
-                } else null
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { galleryViewModel.selectAlbum(album.id) },
-                    label = { Text("${album.name} (${uiState.albumCounts[album.id] ?: 0})") },
-                    trailingIcon = editIcon
-                )
-            }
-        }
-        HorizontalDivider()
-
+        } else {
         PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
             onRefresh = { galleryViewModel.manualRefresh() },
@@ -655,6 +659,7 @@ fun GalleryScreen(
                 }
             }
         }
+        }
     }
 
     if (showNewAlbumDialog) {
@@ -775,6 +780,114 @@ private fun DateGroupHeader(
         )
         TextButton(onClick = { onSelectionChange(if (allSelected) selected - keys.toSet() else selected + keys) }) {
             Text(stringResource(if (allSelected) R.string.gallery_deselect_all else R.string.gallery_select_all))
+        }
+    }
+}
+
+private fun viewModeIcon(mode: GalleryViewMode): ImageVector = when (mode) {
+    GalleryViewMode.GRID_2 -> Icons.Default.GridView
+    GalleryViewMode.GRID_3 -> Icons.Default.Apps
+    GalleryViewMode.GRID_4 -> Icons.Default.ViewComfy
+    GalleryViewMode.MASONRY -> Icons.Default.Dashboard
+    GalleryViewMode.SINGLE -> Icons.Default.ViewAgenda
+}
+
+private fun viewModeLabel(mode: GalleryViewMode): Int = when (mode) {
+    GalleryViewMode.GRID_2 -> R.string.gallery_view_grid_2
+    GalleryViewMode.GRID_3 -> R.string.gallery_view_grid_3
+    GalleryViewMode.GRID_4 -> R.string.gallery_view_grid_4
+    GalleryViewMode.MASONRY -> R.string.gallery_view_masonry
+    GalleryViewMode.SINGLE -> R.string.gallery_view_single
+}
+
+/** Album list: cover, name and item count per album, plus a "new album" tile. */
+@Composable
+private fun AlbumGrid(
+    albums: List<GalleryAlbum>,
+    counts: Map<String, Int>,
+    covers: Map<String, GalleryItem>,
+    onOpen: (String) -> Unit,
+    onNewAlbum: () -> Unit
+) {
+    val context = LocalContext.current
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(150.dp),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        gridItemsIndexed(albums, key = { _, album -> album.id }) { _, album ->
+            Column(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable { onOpen(album.id) }
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(MaterialTheme.shapes.medium)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val cover = covers[album.id]
+                    if (cover != null) {
+                        val (bitmap, _) = rememberGalleryThumbnail(cover, context)
+                        bitmap?.let {
+                            Image(
+                                bitmap = it.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+                    } else {
+                        Icon(
+                            Icons.Default.PhotoLibrary,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+                Text(
+                    album.name,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp, start = 2.dp)
+                )
+                Text(
+                    stringResource(R.string.gallery_album_item_count, counts[album.id] ?: 0),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 2.dp)
+                )
+            }
+        }
+        item(key = "new_album") {
+            Column(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable(onClick = onNewAlbum)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1f)
+                        .clip(MaterialTheme.shapes.medium)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(40.dp))
+                }
+                Text(
+                    stringResource(R.string.gallery_new_album),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(top = 6.dp, start = 2.dp)
+                )
+            }
         }
     }
 }

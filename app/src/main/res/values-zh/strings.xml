@@ -675,4 +675,9 @@
     <string name="media_viewer_edit_image">编辑图片 (img2img)</string>
     <string name="label_slideshow_seconds">幻灯片：每张 %1$d 秒</string>
     <string name="error_image_not_ready">图片仍在加载</string>
+    <string name="gallery_view_mode">视图</string>
+    <string name="gallery_tab_photos">照片</string>
+    <string name="gallery_tab_albums">相册</string>
+    <string name="gallery_album_item_count">%1$d 项</string>
+    <string name="label_no_album">不使用相册</string>
 </resources>
