@@ -17,6 +17,8 @@ import sh.hnet.comfychair.cache.MediaCache
 import sh.hnet.comfychair.cache.MediaCacheKey
 import sh.hnet.comfychair.connection.ConnectionManager
 import sh.hnet.comfychair.storage.AppSettings
+import sh.hnet.comfychair.storage.GalleryLibrary
+import sh.hnet.comfychair.storage.GalleryLibraryStore
 import sh.hnet.comfychair.storage.GalleryMetadataCache
 import sh.hnet.comfychair.storage.LocalGalleryStore
 import sh.hnet.comfychair.util.DebugLogger
@@ -47,9 +49,22 @@ class GalleryRepository private constructor() {
         }
     }
 
-    // Gallery data state
+    // Every known item (history, kept on device, output folder), minus purged ones
+    private var allItems: List<GalleryItem> = emptyList()
+
+    // Trash / purged / custom order for the current server
+    private val _library = MutableStateFlow(GalleryLibrary())
+    val library: StateFlow<GalleryLibrary> = _library.asStateFlow()
+    private var libraryServerId: String? = null
+    private val stateLock = Any()
+
+    // Gallery data state: items not in the trash
     private val _galleryItems = MutableStateFlow<List<GalleryItem>>(emptyList())
     val galleryItems: StateFlow<List<GalleryItem>> = _galleryItems.asStateFlow()
+
+    // Items in the trash, most recently deleted first
+    private val _trashedItems = MutableStateFlow<List<GalleryItem>>(emptyList())
+    val trashedItems: StateFlow<List<GalleryItem>> = _trashedItems.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -71,9 +86,6 @@ class GalleryRepository private constructor() {
     // Track if initial load has been done
     private var hasLoadedOnce = false
 
-    // Track items being deleted to filter them from refresh results
-    private val pendingDeletions = mutableSetOf<String>()
-
     companion object {
         private const val TAG = "GalleryRepo"
 
@@ -82,6 +94,25 @@ class GalleryRepository private constructor() {
 
         private val VIDEO_EXTENSIONS = listOf(".mp4", ".webm", ".gif", ".avi", ".mov")
         private const val PERIODIC_REFRESH_INTERVAL_MS = 5 * 60 * 1000L // 5 minutes
+
+        /** Prompt id prefix for files found in the output folder but not in the history */
+        private const val OUTPUT_FILE_PREFIX = "file:"
+
+        fun isOutputFilePromptId(promptId: String) = promptId.startsWith(OUTPUT_FILE_PREFIX)
+
+        /** Gallery item for a file in the output folder ("a.png" or "sub/dir/b.png"). */
+        fun outputFileItem(path: String): GalleryItem {
+            val subfolder = path.substringBeforeLast('/', "")
+            val filename = path.substringAfterLast('/')
+            return GalleryItem(
+                // Unique per file, and safe to use in cache file names (no '/')
+                promptId = OUTPUT_FILE_PREFIX + path.replace('/', ':'),
+                filename = filename,
+                subfolder = subfolder,
+                type = "output",
+                isVideo = VIDEO_EXTENSIONS.any { filename.lowercase().endsWith(it) }
+            )
+        }
 
         fun getInstance(): GalleryRepository {
             return instance ?: synchronized(this) {
@@ -226,13 +257,12 @@ class GalleryRepository private constructor() {
                 return false
             }
 
-            // Get pending deletions snapshot
-            val deletionsSnapshot: Set<String>
-            synchronized(pendingDeletions) {
-                deletionsSnapshot = pendingDeletions.toSet()
-            }
+            if (context != null && serverId != null) ensureLibrary(context, serverId)
+            val purged = _library.value.purged
 
+            // Items deleted for good are not registered again (and not downloaded again)
             var items = parseHistoryToGalleryItems(historyJson)
+                .filter { GalleryLibraryStore.fileId(it) !in purged }
 
             // Merge with items kept on the device (survive server-side deletion)
             if (context != null && serverId != null) {
@@ -242,13 +272,17 @@ class GalleryRepository private constructor() {
                 }
             }
 
-            // Filter out pending deletions to prevent reappearing
-            if (deletionsSnapshot.isNotEmpty()) {
-                items = items.filter { it.promptId !in deletionsSnapshot }
+            // Everything else in the output folder (no generation info; that's fine)
+            val outputFiles = withContext(Dispatchers.IO) { client.listOutputFiles() }
+            if (outputFiles != null) {
+                val known = items.mapTo(HashSet()) { GalleryLibraryStore.fileId(it) }
+                items = items + outputFiles.mapNotNull { path ->
+                    outputFileItem(path).takeIf { GalleryLibraryStore.fileId(it) !in known }
+                }
             }
 
             val previousCount = _galleryItems.value.size
-            _galleryItems.value = items
+            setAllItems(items)
             _lastRefreshTime.value = System.currentTimeMillis()
             hasLoadedOnce = true
             DebugLogger.d(TAG, "Gallery refresh complete: ${items.size} items (was $previousCount)")
@@ -299,7 +333,8 @@ class GalleryRepository private constructor() {
         val cachedItems = LocalGalleryStore.storedItems(context, serverId).takeIf { it.isNotEmpty() }
             ?: GalleryMetadataCache.loadMetadata(context, serverId)
         if (cachedItems != null) {
-            _galleryItems.value = cachedItems
+            ensureLibrary(context, serverId)
+            setAllItems(cachedItems)
             _lastRefreshTime.value = GalleryMetadataCache.getCacheTimestamp(context, serverId)
             hasLoadedOnce = true
             DebugLogger.d(TAG, "Gallery loaded from offline cache: ${cachedItems.size} items")
@@ -315,109 +350,120 @@ class GalleryRepository private constructor() {
      */
     fun hasData(): Boolean = hasLoadedOnce && _galleryItems.value.isNotEmpty()
 
-    /**
-     * Remove an item from the local gallery list only (server deletion already done).
-     * Used by MediaViewerViewModel to sync after it deletes on server.
-     *
-     * @param promptId The prompt ID of the item to remove
-     */
-    fun removeItemLocally(promptId: String) {
-        applicationContext?.let { LocalGalleryStore.remove(it, ConnectionManager.currentServerId, setOf(promptId)) }
-        val currentItems = _galleryItems.value.toMutableList()
-        currentItems.removeAll { it.promptId == promptId }
-        _galleryItems.value = currentItems
-    }
+    // Trash
 
-    /**
-     * Delete an item from the gallery
-     */
-    suspend fun deleteItem(item: GalleryItem): Boolean {
-        val client = comfyUIClient ?: return false
-
-        // Add to pending deletions to prevent reappearing during concurrent refresh
-        synchronized(pendingDeletions) {
-            pendingDeletions.add(item.promptId)
-        }
-
-        // Remove from local list immediately for responsive UI
-        val currentItems = _galleryItems.value.toMutableList()
-        currentItems.removeAll { it.promptId == item.promptId }
-        _galleryItems.value = currentItems
-
-        try {
-            val success = withContext(Dispatchers.IO) {
-                kotlin.coroutines.suspendCoroutine { continuation ->
-                    client.deleteHistoryItem(item.promptId) { success ->
-                        continuation.resumeWith(Result.success(success))
-                    }
-                }
-            }
-
-            if (success) {
-                // Evict from media cache
-                MediaCache.evict(MediaCacheKey(item.promptId, item.filename))
-                applicationContext?.let {
-                    LocalGalleryStore.remove(it, ConnectionManager.currentServerId, setOf(item.promptId))
-                }
-            }
-
-            return success
-        } finally {
-            // Always remove from pending deletions to prevent memory leak
-            synchronized(pendingDeletions) {
-                pendingDeletions.remove(item.promptId)
-            }
+    private fun ensureLibrary(context: Context, serverId: String) {
+        synchronized(stateLock) {
+            if (libraryServerId == serverId) return
+            libraryServerId = serverId
+            _library.value = GalleryLibraryStore.load(context, serverId)
         }
     }
 
+    private fun setAllItems(items: List<GalleryItem>) {
+        synchronized(stateLock) {
+            val purged = _library.value.purged
+            allItems = items.filter { GalleryLibraryStore.fileId(it) !in purged }
+            publish()
+        }
+    }
+
+    /** Split all items into gallery and trash. Call with [stateLock] held. */
+    private fun publish() {
+        val trash = _library.value.trash
+        val purged = _library.value.purged
+        val (trashed, visible) = allItems
+            .filter { GalleryLibraryStore.fileId(it) !in purged }
+            .partition { GalleryLibraryStore.fileId(it) in trash }
+        _galleryItems.value = visible
+        _trashedItems.value = trashed.sortedByDescending { trash[GalleryLibraryStore.fileId(it)] ?: 0L }
+    }
+
+    private fun updateLibrary(transform: (GalleryLibrary) -> GalleryLibrary) {
+        val context = applicationContext
+        val serverId = ConnectionManager.currentServerId
+        synchronized(stateLock) {
+            if (context != null && serverId != null) ensureLibrary(context, serverId)
+            _library.value = transform(_library.value)
+            publish()
+        }
+        if (context != null && serverId != null) scheduleLibrarySave(context, serverId)
+    }
+
+    private var librarySaveJob: Job? = null
+
+    /** Save the latest library shortly (drag reordering changes it many times in a row). */
+    private fun scheduleLibrarySave(context: Context, serverId: String) {
+        synchronized(stateLock) {
+            librarySaveJob?.cancel()
+            librarySaveJob = scope.launch(Dispatchers.IO) {
+                delay(300)
+                val library = synchronized(stateLock) {
+                    if (libraryServerId != serverId) return@launch
+                    _library.value
+                }
+                GalleryLibraryStore.save(context, serverId, library)
+            }
+        }
+    }
+
+    /** Move items to the trash. They can be restored until the trash is emptied. */
+    fun moveToTrash(items: Collection<GalleryItem>) {
+        if (items.isEmpty()) return
+        val now = System.currentTimeMillis()
+        updateLibrary { lib -> lib.copy(trash = lib.trash + items.map { GalleryLibraryStore.fileId(it) to now }) }
+    }
+
+    fun restoreFromTrash(items: Collection<GalleryItem>) {
+        if (items.isEmpty()) return
+        val ids = items.map { GalleryLibraryStore.fileId(it) }.toSet()
+        updateLibrary { lib -> lib.copy(trash = lib.trash - ids) }
+    }
+
+    /** Save a custom item order (file ids, top first). */
+    fun setOrder(order: List<String>) {
+        updateLibrary { lib -> lib.copy(order = order) }
+    }
+
     /**
-     * Delete multiple items by prompt IDs
+     * Delete items for good: they are hidden permanently, removed from the device copy,
+     * and a history entry is removed from the server once none of its images are left.
+     * ComfyUI has no API to delete files, so the files stay in the server's output folder.
      */
-    suspend fun deleteItems(promptIds: Set<String>): Int {
-        val client = comfyUIClient ?: return 0
-
-        // Find items to be deleted for cache eviction
-        val itemsToDelete = _galleryItems.value.filter { it.promptId in promptIds }
-
-        // Add to pending deletions to prevent reappearing during concurrent refresh
-        synchronized(pendingDeletions) {
-            pendingDeletions.addAll(promptIds)
+    suspend fun deletePermanently(items: Collection<GalleryItem>) {
+        if (items.isEmpty()) return
+        val ids = items.map { GalleryLibraryStore.fileId(it) }.toSet()
+        updateLibrary { lib ->
+            lib.copy(trash = lib.trash - ids, purged = lib.purged + ids, order = lib.order - ids)
+        }
+        val remainingPrompts = synchronized(stateLock) {
+            allItems = allItems.filter { GalleryLibraryStore.fileId(it) !in ids }
+            publish()
+            allItems.mapTo(HashSet()) { it.promptId }
         }
 
-        // Remove from local list immediately for responsive UI
-        val currentItems = _galleryItems.value.toMutableList()
-        currentItems.removeAll { it.promptId in promptIds }
-        _galleryItems.value = currentItems
+        val context = applicationContext
+        val serverId = ConnectionManager.currentServerId
+        withContext(Dispatchers.IO) {
+            if (context != null && serverId != null) {
+                LocalGalleryStore.removeKeys(context, serverId, items.map { it.toCacheKey().keyString }.toSet())
+            }
+            items.forEach { MediaCache.evict(it.toCacheKey()) }
+        }
 
-        try {
-            var successCount = 0
-            for (promptId in promptIds) {
-                val success = withContext(Dispatchers.IO) {
-                    kotlin.coroutines.suspendCoroutine { continuation ->
+        // Remove history entries that have no images left (best effort; hidden either way)
+        val client = comfyUIClient ?: return
+        items.map { it.promptId }.distinct()
+            .filter { !isOutputFilePromptId(it) && it !in remainingPrompts }
+            .forEach { promptId ->
+                withContext(Dispatchers.IO) {
+                    kotlin.coroutines.suspendCoroutine<Boolean> { continuation ->
                         client.deleteHistoryItem(promptId) { success ->
                             continuation.resumeWith(Result.success(success))
                         }
                     }
                 }
-                if (success) {
-                    successCount++
-                    applicationContext?.let {
-                        LocalGalleryStore.remove(it, ConnectionManager.currentServerId, setOf(promptId))
-                    }
-                    // Evict from media cache
-                    itemsToDelete.filter { it.promptId == promptId }.forEach { item ->
-                        MediaCache.evict(MediaCacheKey(item.promptId, item.filename))
-                    }
-                }
             }
-
-            return successCount
-        } finally {
-            // Always remove from pending deletions to prevent memory leak
-            synchronized(pendingDeletions) {
-                pendingDeletions.removeAll(promptIds)
-            }
-        }
     }
 
     /**
@@ -427,12 +473,14 @@ class GalleryRepository private constructor() {
      */
     fun clearCache() {
         DebugLogger.i(TAG, "Clearing cache")
-        _galleryItems.value = emptyList()
+        synchronized(stateLock) {
+            allItems = emptyList()
+            libraryServerId = null
+            _library.value = GalleryLibrary()
+            publish()
+        }
         _lastRefreshTime.value = 0L
         hasLoadedOnce = false
-        synchronized(pendingDeletions) {
-            pendingDeletions.clear()
-        }
         stopPeriodicRefresh()
         localSyncJob?.cancel()
         localSyncJob = null

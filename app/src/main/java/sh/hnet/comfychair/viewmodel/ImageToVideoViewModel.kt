@@ -1,5 +1,6 @@
 package sh.hnet.comfychair.viewmodel
 
+import sh.hnet.comfychair.repository.GalleryRepository
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -212,6 +213,8 @@ class ImageToVideoViewModel : BaseGenerationViewModel<ImageToVideoUiState, Image
     }
 
     init {
+        observeTrash()
+
         // Observe model cache from ConnectionManager
         viewModelScope.launch {
             ConnectionManager.modelCache.collect { cache ->
@@ -1122,12 +1125,22 @@ class ImageToVideoViewModel : BaseGenerationViewModel<ImageToVideoUiState, Image
     fun clearPreviewForExecution(promptId: String) {
         if (promptId == lastClearedForPromptId) return
         lastClearedForPromptId = promptId
-        // Evict preview from cache so restoreLastPreviewImage() won't restore the old preview
-        // when navigating back to this screen during generation
-        MediaStateHolder.evict(MediaStateHolder.MediaKey.ItvPreview)
-        _uiState.value = _uiState.value.copy(previewBitmap = null, currentVideoUri = null)
-        // Clear prompt ID tracking to prevent restoration on subsequent screen navigations
-        MediaStateHolder.clearCurrentItvPromptId()
+        // Keep showing the last result until the first live preview (or the new video) arrives
+    }
+
+    /**
+     * Clear the preview when the video it shows is deleted from the gallery
+     * (moved to the trash), so a deleted video does not stay on this screen.
+     */
+    private fun observeTrash() {
+        viewModelScope.launch {
+            GalleryRepository.getInstance().trashedItems.collect { trashed ->
+                val promptId = MediaStateHolder.getCurrentItvPromptId() ?: return@collect
+                if (_uiState.value.currentVideoUri != null && trashed.any { it.promptId == promptId }) {
+                    clearPreview()
+                }
+            }
+        }
     }
 
     fun clearPreview() {

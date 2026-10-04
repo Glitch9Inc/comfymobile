@@ -692,4 +692,16 @@
     <string name="gallery_slideshow">Slideshow</string>
     <string name="media_viewer_slideshow_start">Start slideshow</string>
     <string name="media_viewer_slideshow_stop">Stop slideshow</string>
+    <string name="gallery_tab_photos">Photos</string>
+    <string name="gallery_tab_albums">Albums</string>
+    <string name="gallery_tab_trash">Trash</string>
+    <string name="msg_moved_to_trash">Moved to trash</string>
+    <string name="msg_restored_from_trash">Restored</string>
+    <string name="msg_trash_emptied">Trash emptied</string>
+    <string name="msg_trash_empty">Trash is empty</string>
+    <string name="gallery_restore">Restore</string>
+    <string name="gallery_delete_forever">Delete permanently</string>
+    <string name="gallery_empty_trash">Empty trash</string>
+    <string name="gallery_delete_forever_confirm">Permanently delete %d items? This can\'t be undone. The files stay in ComfyUI\'s output folder.</string>
+    <string name="gallery_folder_album">Output folder</string>
 </resources>

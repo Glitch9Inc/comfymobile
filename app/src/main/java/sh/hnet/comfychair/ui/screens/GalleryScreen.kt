@@ -1,7 +1,21 @@
 package sh.hnet.comfychair.ui.screens
 
-import android.app.Activity
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.RestoreFromTrash
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.zIndex
+import sh.hnet.comfychair.viewmodel.GalleryTab
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -114,8 +128,6 @@ import androidx.compose.material.icons.filled.Slideshow
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.round
 import sh.hnet.comfychair.ui.components.DragSelectState
 import sh.hnet.comfychair.ui.components.gallerySelectGestures
 
@@ -139,17 +151,10 @@ fun GalleryScreen(
     // Activity result launcher for MediaViewerActivity
     val mediaViewerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
+    ) {
         // Restore active view to Gallery
         MediaCache.setActiveView(ActiveView.GALLERY)
-
-        // Refresh gallery if item was deleted (silent refresh, no spinner)
-        if (result.resultCode == Activity.RESULT_OK) {
-            val itemDeleted = result.data?.getBooleanExtra(MediaViewerActivity.RESULT_ITEM_DELETED, false) ?: false
-            if (itemDeleted) {
-                galleryViewModel.refresh()
-            }
-        }
+        // Deleting in the viewer only moves items to the trash (local), so nothing to reload
     }
 
     // Initialize ViewModel
@@ -179,6 +184,17 @@ fun GalleryScreen(
         }
     }
 
+    val tab = uiState.tab
+    val selectedAlbum = uiState.selectedAlbum
+    val isTrash = tab == GalleryTab.TRASH
+    val showAlbumList = tab == GalleryTab.ALBUMS && selectedAlbum == null
+
+    // Back: leave selection mode, then close the open album
+    BackHandler(enabled = uiState.isSelectionMode || selectedAlbum != null) {
+        if (uiState.isSelectionMode) galleryViewModel.clearSelection()
+        else galleryViewModel.selectAlbum(null)
+    }
+
     // Helper function to convert GalleryItems to MediaViewerItems
     fun galleryItemsToViewerItems(items: List<GalleryItem>): List<MediaViewerItem> {
         return items.map { item ->
@@ -194,22 +210,29 @@ fun GalleryScreen(
     }
 
     // Function to launch media viewer
-    fun launchMediaViewer(clickedIndex: Int, startSlideshow: Boolean = false) {
+    // [clickedKey] = item to open (null = first item). The item is looked up by key in the
+    // latest list, so a refresh between the tap and here can't open a different image.
+    fun launchMediaViewer(clickedKey: String?, startSlideshow: Boolean = false) {
+        val items = galleryViewModel.uiState.value.items
+        val clickedIndex = if (clickedKey == null) 0
+        else items.indexOfFirst { "${it.promptId}_${it.filename}" == clickedKey }
+        if (clickedIndex !in items.indices) return
+
         // Set active view to MediaViewer
         MediaCache.setActiveView(ActiveView.MEDIA_VIEWER)
 
         // Update priorities to protect items around clicked index
-        val allKeys = uiState.items.map { it.toCacheKey() }
+        val allKeys = items.map { it.toCacheKey() }
         MediaCache.updateNavigationPriorities(clickedIndex, allKeys)
 
-        val viewerItems = galleryItemsToViewerItems(uiState.items)
         val intent = MediaViewerActivity.createGalleryIntent(
             context = context,
             hostname = ConnectionManager.hostname,
             port = ConnectionManager.port,
-            items = viewerItems,
+            items = galleryItemsToViewerItems(items),
             initialIndex = clickedIndex,
-            startSlideshow = startSlideshow
+            startSlideshow = startSlideshow,
+            isTrash = galleryViewModel.uiState.value.tab == GalleryTab.TRASH
         )
         mediaViewerLauncher.launch(intent)
     }
@@ -225,46 +248,79 @@ fun GalleryScreen(
     val columns = viewMode.columns
     val spacing = if (columns >= 3) 4.dp else 8.dp
 
-    // Tap / long-press / drag-to-select handled at grid level (see gallerySelectGestures)
+    // Where each visible cell is drawn, in grid coordinates (used to find the item under a finger)
+    val itemBounds = remember { HashMap<String, Rect>() }
+    fun visibleKeys(): List<Any> = if (isMasonry) {
+        staggeredState.layoutInfo.visibleItemsInfo.map { it.key }
+    } else {
+        gridState.layoutInfo.visibleItemsInfo.map { it.key }
+    }
+    fun keyAtPosition(pos: Offset): String? =
+        visibleKeys().firstOrNull { key -> (key as? String)?.let { itemBounds[it] }?.contains(pos) == true } as? String
+
+    // Drag and drop ordering: the item being moved follows the finger
+    var draggingKey by remember { mutableStateOf<String?>(null) }
+    var dragPosition by remember { mutableStateOf(Offset.Zero) }
+    var grabOffset by remember { mutableStateOf(Offset.Zero) }
+
+    // Tap / long-press / drag-to-select / drag-to-move handled at grid level (see gallerySelectGestures)
     val haptics = LocalHapticFeedback.current
     val dragSelectState = remember { DragSelectState() }
     val edgeThreshold = with(LocalDensity.current) { 64.dp.toPx() }
     val currentItems by rememberUpdatedState(uiState.items)
     val currentSelection by rememberUpdatedState(uiState.selectedItems)
     val currentSelectionMode by rememberUpdatedState(uiState.isSelectionMode)
-    val launchViewer by rememberUpdatedState<(Int) -> Unit>({ index -> launchMediaViewer(index) })
+    val currentCanReorder by rememberUpdatedState(uiState.canReorder)
+    val launchViewer by rememberUpdatedState<(String) -> Unit>({ key -> launchMediaViewer(key) })
     fun itemKey(item: GalleryItem) = "${item.promptId}_${item.filename}"
     // Remembered so the gesture coroutine is not restarted on every recomposition
     val selectGestures = remember(isMasonry) { Modifier.gallerySelectGestures(
         state = dragSelectState,
         haptics = haptics,
         edgeThreshold = edgeThreshold,
-        keyAt = { pos ->
-            val hit = pos.round()
-            if (isMasonry) {
-                staggeredState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { IntRect(it.offset, it.size).contains(hit) }?.key as? String
-            } else {
-                gridState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { IntRect(it.offset, it.size).contains(hit) }?.key as? String
-            }
-        },
+        keyAt = { pos -> keyAtPosition(pos) },
         keys = { currentItems.map(::itemKey) },
         selection = { currentSelection },
+        isSelectionMode = { currentSelectionMode },
+        canReorder = { currentCanReorder },
         onTap = { key ->
             val index = currentItems.indexOfFirst { itemKey(it) == key }
             if (index >= 0) {
                 if (currentSelectionMode) {
                     galleryViewModel.toggleSelection(currentItems[index])
                 } else {
-                    launchViewer(index)
+                    launchViewer(key)
                 }
             }
         },
-        onSelectionChange = { galleryViewModel.setSelection(it) }
+        onSelectionChange = { galleryViewModel.setSelection(it) },
+        onReorderStart = { key, pos ->
+            draggingKey = key
+            dragPosition = pos
+            grabOffset = pos - (itemBounds[key]?.topLeft ?: pos)
+        },
+        onReorderMove = move@{ pos ->
+            dragPosition = pos
+            val from = draggingKey ?: return@move
+            val target = keyAtPosition(pos) ?: return@move
+            if (target == from) return@move
+            // Moving the first visible item would make the grid follow it; keep the scroll position
+            val first = visibleKeys().firstOrNull()
+            if (first == from || first == target) {
+                if (isMasonry) {
+                    staggeredState.requestScrollToItem(
+                        staggeredState.firstVisibleItemIndex, staggeredState.firstVisibleItemScrollOffset
+                    )
+                } else {
+                    gridState.requestScrollToItem(gridState.firstVisibleItemIndex, gridState.firstVisibleItemScrollOffset)
+                }
+            }
+            galleryViewModel.moveItem(from, target)
+        },
+        onReorderEnd = { draggingKey = null }
     ) }
 
-    // Auto-scroll while drag-selecting near the top/bottom edge
+    // Auto-scroll while drag-selecting or moving an item near the top/bottom edge
     LaunchedEffect(dragSelectState.autoScrollSpeed) {
         val speed = dragSelectState.autoScrollSpeed
         if (speed != 0f) {
@@ -276,11 +332,12 @@ fun GalleryScreen(
         }
     }
 
-    // Album dialogs
+    // Dialogs
     var showNewAlbumDialog by remember { mutableStateOf(false) }
     var showAddToAlbumDialog by remember { mutableStateOf(false) }
     var editingAlbum by remember { mutableStateOf<GalleryAlbum?>(null) }
-    val selectedAlbum = uiState.albums.firstOrNull { it.id == uiState.selectedAlbumId }
+    var showEmptyTrashDialog by remember { mutableStateOf(false) }
+    var showDeleteForeverDialog by remember { mutableStateOf(false) }
 
     // Create prefetch items list from gallery items
     val prefetchItems = remember(uiState.items) {
@@ -309,8 +366,8 @@ fun GalleryScreen(
         }
     }
 
-    // Start at the top when switching album or view mode
-    LaunchedEffect(uiState.selectedAlbumId, viewMode) {
+    // Start at the top when switching tab, album or view mode
+    LaunchedEffect(tab, uiState.selectedAlbumId, viewMode) {
         if (isMasonry) staggeredState.scrollToItem(0) else gridState.scrollToItem(0)
     }
 
@@ -339,10 +396,15 @@ fun GalleryScreen(
     Column(modifier = modifier.fillMaxSize()) {
         TopAppBar(
             title = {
-                if (uiState.isSelectionMode) {
-                    Text(stringResource(R.string.gallery_selected_count, uiState.selectedItems.size))
-                } else {
-                    Text(stringResource(R.string.title_gallery))
+                when {
+                    uiState.isSelectionMode ->
+                        Text(stringResource(R.string.gallery_selected_count, uiState.selectedItems.size))
+                    selectedAlbum != null ->
+                        Text(selectedAlbum.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    else -> GalleryTabs(
+                        selected = tab,
+                        onSelect = { galleryViewModel.selectTab(it) }
+                    )
                 }
             },
             windowInsets = WindowInsets(0, 0, 0, 0),
@@ -351,11 +413,30 @@ fun GalleryScreen(
                     IconButton(onClick = { galleryViewModel.clearSelection() }) {
                         Icon(Icons.Default.Close, contentDescription = stringResource(R.string.button_cancel_selection))
                     }
+                } else if (selectedAlbum != null) {
+                    IconButton(onClick = { galleryViewModel.selectAlbum(null) }) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.content_description_back))
+                    }
                 }
             },
             actions = {
-                if (uiState.isSelectionMode) {
-                    // Selection mode actions: Delete, Save, and Share
+                if (uiState.isSelectionMode && isTrash) {
+                    // Trash selection: restore or delete for good
+                    IconButton(onClick = { galleryViewModel.restoreSelected() }) {
+                        Icon(Icons.Default.RestoreFromTrash, contentDescription = stringResource(R.string.gallery_restore))
+                    }
+                    IconButton(
+                        onClick = { showDeleteForeverDialog = true },
+                        enabled = uiState.selectedItems.isNotEmpty()
+                    ) {
+                        Icon(
+                            Icons.Default.DeleteForever,
+                            contentDescription = stringResource(R.string.gallery_delete_forever),
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                } else if (uiState.isSelectionMode) {
+                    // Selection mode actions: Trash, albums, Save and Share
                     IconButton(onClick = { galleryViewModel.deleteSelected() }) {
                         Icon(
                             Icons.Default.Delete,
@@ -366,7 +447,7 @@ fun GalleryScreen(
                     IconButton(onClick = { showAddToAlbumDialog = true }) {
                         Icon(Icons.Default.LibraryAdd, contentDescription = stringResource(R.string.gallery_add_to_album))
                     }
-                    if (selectedAlbum != null) {
+                    if (selectedAlbum != null && !GalleryViewModel.isFolderAlbum(selectedAlbum.id)) {
                         IconButton(onClick = { galleryViewModel.removeSelectedFromAlbum(selectedAlbum.id) }) {
                             Icon(Icons.Default.RemoveCircleOutline, contentDescription = stringResource(R.string.gallery_remove_from_album))
                         }
@@ -378,15 +459,42 @@ fun GalleryScreen(
                         Icon(Icons.Default.Share, contentDescription = stringResource(R.string.button_share))
                     }
                 } else {
-                    // Normal mode actions: Slideshow, Select and Menu
-                    IconButton(
-                        onClick = { launchMediaViewer(0, startSlideshow = true) },
-                        enabled = uiState.items.isNotEmpty()
-                    ) {
-                        Icon(Icons.Default.Slideshow, contentDescription = stringResource(R.string.gallery_slideshow))
-                    }
-                    IconButton(onClick = { galleryViewModel.enterSelectionMode() }) {
-                        Icon(Icons.Default.Checklist, contentDescription = stringResource(R.string.button_gallery_select))
+                    when {
+                        showAlbumList -> {
+                            IconButton(onClick = { showNewAlbumDialog = true }) {
+                                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.gallery_new_album))
+                            }
+                        }
+                        isTrash -> {
+                            IconButton(
+                                onClick = { showEmptyTrashDialog = true },
+                                enabled = uiState.items.isNotEmpty()
+                            ) {
+                                Icon(Icons.Default.DeleteSweep, contentDescription = stringResource(R.string.gallery_empty_trash))
+                            }
+                            IconButton(
+                                onClick = { galleryViewModel.enterSelectionMode() },
+                                enabled = uiState.items.isNotEmpty()
+                            ) {
+                                Icon(Icons.Default.Checklist, contentDescription = stringResource(R.string.button_gallery_select))
+                            }
+                        }
+                        else -> {
+                            if (selectedAlbum != null && !GalleryViewModel.isFolderAlbum(selectedAlbum.id)) {
+                                IconButton(onClick = { editingAlbum = selectedAlbum }) {
+                                    Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.gallery_edit_album))
+                                }
+                            }
+                            IconButton(
+                                onClick = { launchMediaViewer(null, startSlideshow = true) },
+                                enabled = uiState.items.isNotEmpty()
+                            ) {
+                                Icon(Icons.Default.Slideshow, contentDescription = stringResource(R.string.gallery_slideshow))
+                            }
+                            IconButton(onClick = { galleryViewModel.enterSelectionMode() }) {
+                                Icon(Icons.Default.Checklist, contentDescription = stringResource(R.string.button_gallery_select))
+                            }
+                        }
                     }
                     AppMenuDropdown(
                         onSettings = onNavigateToSettings,
@@ -396,91 +504,97 @@ fun GalleryScreen(
             }
         )
 
-        // View mode switcher
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val modes = listOf(
-                Triple(GalleryViewMode.GRID_2, Icons.Default.GridView, R.string.gallery_view_grid_2),
-                Triple(GalleryViewMode.GRID_3, Icons.Default.Apps, R.string.gallery_view_grid_3),
-                Triple(GalleryViewMode.GRID_4, Icons.Default.ViewComfy, R.string.gallery_view_grid_4),
-                Triple(GalleryViewMode.MASONRY, Icons.Default.Dashboard, R.string.gallery_view_masonry),
-                Triple(GalleryViewMode.SINGLE, Icons.Default.ViewAgenda, R.string.gallery_view_single)
-            )
-            modes.forEach { (mode, icon, labelRes) ->
-                ViewModeButton(
-                    icon = icon,
-                    label = stringResource(labelRes),
-                    selected = viewMode == mode,
-                    onClick = { galleryViewModel.setViewMode(mode) }
+        // View mode switcher (not for the album list)
+        if (!showAlbumList) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val modes = listOf(
+                    Triple(GalleryViewMode.GRID_2, Icons.Default.GridView, R.string.gallery_view_grid_2),
+                    Triple(GalleryViewMode.GRID_3, Icons.Default.Apps, R.string.gallery_view_grid_3),
+                    Triple(GalleryViewMode.GRID_4, Icons.Default.ViewComfy, R.string.gallery_view_grid_4),
+                    Triple(GalleryViewMode.MASONRY, Icons.Default.Dashboard, R.string.gallery_view_masonry),
+                    Triple(GalleryViewMode.SINGLE, Icons.Default.ViewAgenda, R.string.gallery_view_single)
                 )
-            }
-            if (uiState.isSelectionMode && uiState.items.isNotEmpty()) {
-                Spacer(modifier = Modifier.weight(1f))
-                val allSelected = uiState.items.all { itemKey(it) in uiState.selectedItems }
-                TextButton(
-                    onClick = {
-                        if (allSelected) galleryViewModel.setSelection(emptySet())
-                        else galleryViewModel.selectAll()
+                modes.forEach { (mode, icon, labelRes) ->
+                    ViewModeButton(
+                        icon = icon,
+                        label = stringResource(labelRes),
+                        selected = viewMode == mode,
+                        onClick = { galleryViewModel.setViewMode(mode) }
+                    )
+                }
+                if (uiState.isSelectionMode && uiState.items.isNotEmpty()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    val allSelected = uiState.items.all { itemKey(it) in uiState.selectedItems }
+                    TextButton(
+                        onClick = {
+                            if (allSelected) galleryViewModel.setSelection(emptySet())
+                            else galleryViewModel.selectAll()
+                        }
+                    ) {
+                        Text(stringResource(if (allSelected) R.string.gallery_deselect_all else R.string.gallery_select_all))
                     }
-                ) {
-                    Text(stringResource(if (allSelected) R.string.gallery_deselect_all else R.string.gallery_select_all))
                 }
             }
+            HorizontalDivider()
         }
-
-        // Album chips
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FilterChip(
-                selected = selectedAlbum == null,
-                onClick = { galleryViewModel.selectAlbum(null) },
-                label = { Text("${stringResource(R.string.gallery_album_all)} (${uiState.totalCount})") }
-            )
-            uiState.albums.forEach { album ->
-                val isSelected = album.id == selectedAlbum?.id
-                val editIcon: (@Composable () -> Unit)? = if (isSelected) {
-                    {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = stringResource(R.string.gallery_edit_album),
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clickable { editingAlbum = album }
-                        )
-                    }
-                } else null
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { galleryViewModel.selectAlbum(album.id) },
-                    label = { Text("${album.name} (${uiState.albumCounts[album.id] ?: 0})") },
-                    trailingIcon = editIcon
-                )
-            }
-            AssistChip(
-                onClick = { showNewAlbumDialog = true },
-                label = { Text(stringResource(R.string.gallery_new_album)) },
-                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp)) }
-            )
-        }
-        HorizontalDivider()
 
         PullToRefreshBox(
             isRefreshing = uiState.isRefreshing,
             onRefresh = { galleryViewModel.manualRefresh() },
             modifier = Modifier.fillMaxSize()
         ) {
-            // Always use LazyVerticalGrid for consistent nested scroll behavior with pull-to-refresh
             NoOverscrollContainer(modifier = Modifier.fillMaxSize()) {
+                if (showAlbumList) {
+                    AlbumList(
+                        albums = uiState.albums + uiState.folderAlbums,
+                        counts = uiState.albumCounts,
+                        covers = uiState.albumCovers,
+                        isOfflineMode = isOfflineMode,
+                        onOpen = { galleryViewModel.selectAlbum(it.id) },
+                        onNewAlbum = { showNewAlbumDialog = true }
+                    )
+                } else {
+
+                val emptyMessage = when {
+                    isTrash -> R.string.msg_trash_empty
+                    selectedAlbum != null -> R.string.msg_album_empty
+                    else -> R.string.msg_gallery_empty
+                }
+
+                // One grid cell; [placement] animates moves (not for the item being dragged)
+                @Composable
+                fun Cell(item: GalleryItem, placement: Modifier) {
+                    val key = itemKey(item)
+                    val isDragging = key == draggingKey
+                    GalleryItemCard(
+                        item = item,
+                        isSelected = key in uiState.selectedItems,
+                        isOfflineMode = isOfflineMode,
+                        square = viewMode.square,
+                        modifier = Modifier
+                            .then(if (isDragging) Modifier.zIndex(1f) else placement)
+                            .onGloballyPositioned { itemBounds[key] = it.boundsInParent() }
+                            .graphicsLayer {
+                                if (isDragging) {
+                                    val bounds = itemBounds[key]
+                                    if (bounds != null) {
+                                        translationX = dragPosition.x - grabOffset.x - bounds.left
+                                        translationY = dragPosition.y - grabOffset.y - bounds.top
+                                    }
+                                    scaleX = 1.05f
+                                    scaleY = 1.05f
+                                    alpha = 0.9f
+                                    shadowElevation = 12.dp.toPx()
+                                }
+                            }
+                    )
+                }
+
                 if (isMasonry) {
                 LazyVerticalStaggeredGrid(
                     columns = StaggeredGridCells.Fixed(columns),
@@ -490,54 +604,16 @@ fun GalleryScreen(
                     verticalItemSpacing = spacing,
                     modifier = Modifier.fillMaxSize().then(selectGestures)
                 ) {
-                if (uiState.isLoading && uiState.items.isEmpty()) {
+                if (uiState.isLoading && uiState.items.isEmpty() && !isTrash) {
                     // Loading state - show as full-span item
-                    item(span = StaggeredGridItemSpan.FullLine) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
+                    item(span = StaggeredGridItemSpan.FullLine) { GridLoading() }
                 } else if (uiState.items.isEmpty()) {
                     // Empty state - show as full-span item
-                    item(span = StaggeredGridItemSpan.FullLine) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Default.Image,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(64.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                                Text(
-                                    text = stringResource(
-                                        if (selectedAlbum != null) R.string.msg_album_empty else R.string.msg_gallery_empty
-                                    ),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+                    item(span = StaggeredGridItemSpan.FullLine) { GridEmpty(emptyMessage) }
                 } else {
                     // Gallery items
-                    itemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { _, item ->
-                        val key = "${item.promptId}_${item.filename}"
-                        GalleryItemCard(
-                            item = item,
-                            isSelected = key in uiState.selectedItems,
-                            isOfflineMode = isOfflineMode,
-                            square = viewMode.square
-                        )
+                    itemsIndexed(uiState.items, key = { _, item -> itemKey(item) }) { _, item ->
+                        Cell(item, Modifier.animateItem())
                     }
                 }
                 }
@@ -550,55 +626,18 @@ fun GalleryScreen(
                     verticalArrangement = Arrangement.spacedBy(spacing),
                     modifier = Modifier.fillMaxSize().then(selectGestures)
                 ) {
-                if (uiState.isLoading && uiState.items.isEmpty()) {
+                if (uiState.isLoading && uiState.items.isEmpty() && !isTrash) {
                     // Loading state - show as full-span item
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator()
-                        }
-                    }
+                    item(span = { GridItemSpan(maxLineSpan) }) { GridLoading() }
                 } else if (uiState.items.isEmpty()) {
                     // Empty state - show as full-span item
-                    item(span = { GridItemSpan(maxLineSpan) }) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .aspectRatio(1f),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Default.Image,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(64.dp),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                                )
-                                Text(
-                                    text = stringResource(
-                                        if (selectedAlbum != null) R.string.msg_album_empty else R.string.msg_gallery_empty
-                                    ),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+                    item(span = { GridItemSpan(maxLineSpan) }) { GridEmpty(emptyMessage) }
                 } else {
                     // Gallery items
-                    gridItemsIndexed(uiState.items, key = { _, item -> "${item.promptId}_${item.filename}" }) { _, item ->
-                        val key = "${item.promptId}_${item.filename}"
-                        GalleryItemCard(
-                            item = item,
-                            isSelected = key in uiState.selectedItems,
-                            isOfflineMode = isOfflineMode,
-                            square = viewMode.square
-                        )
+                    gridItemsIndexed(uiState.items, key = { _, item -> itemKey(item) }) { _, item ->
+                        Cell(item, Modifier.animateItem())
                     }
+                }
                 }
                 }
                 }
@@ -651,6 +690,218 @@ fun GalleryScreen(
             onDismiss = { showAddToAlbumDialog = false }
         )
     }
+
+    if (showEmptyTrashDialog) {
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.gallery_empty_trash),
+            message = stringResource(R.string.gallery_delete_forever_confirm, uiState.trashCount),
+            onConfirm = {
+                galleryViewModel.emptyTrash()
+                showEmptyTrashDialog = false
+            },
+            onDismiss = { showEmptyTrashDialog = false }
+        )
+    }
+
+    if (showDeleteForeverDialog) {
+        ConfirmDeleteDialog(
+            title = stringResource(R.string.gallery_delete_forever),
+            message = stringResource(R.string.gallery_delete_forever_confirm, uiState.selectedItems.size),
+            onConfirm = {
+                galleryViewModel.deleteSelectedPermanently()
+                showDeleteForeverDialog = false
+            },
+            onDismiss = { showDeleteForeverDialog = false }
+        )
+    }
+}
+
+/**
+ * Photos / Albums / Trash tabs, shown at the start of the app bar.
+ */
+@Composable
+private fun GalleryTabs(
+    selected: GalleryTab,
+    onSelect: (GalleryTab) -> Unit
+) {
+    val tabs = listOf(
+        GalleryTab.PHOTOS to R.string.gallery_tab_photos,
+        GalleryTab.ALBUMS to R.string.gallery_tab_albums,
+        GalleryTab.TRASH to R.string.gallery_tab_trash
+    )
+    Row(
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        tabs.forEach { (tab, labelRes) ->
+            val isSelected = tab == selected
+            Text(
+                text = stringResource(labelRes),
+                style = MaterialTheme.typography.labelLarge,
+                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                    .clickable { onSelect(tab) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun GridLoading() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f),
+        contentAlignment = Alignment.Center
+    ) {
+        CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun GridEmpty(messageRes: Int) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                imageVector = Icons.Default.Image,
+                contentDescription = null,
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            )
+            Text(
+                text = stringResource(messageRes),
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * Album list: user albums, then one album per output subfolder, then a "New album" tile.
+ */
+@Composable
+private fun AlbumList(
+    albums: List<GalleryAlbum>,
+    counts: Map<String, Int>,
+    covers: Map<String, GalleryItem>,
+    isOfflineMode: Boolean,
+    onOpen: (GalleryAlbum) -> Unit,
+    onNewAlbum: () -> Unit
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(2),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.fillMaxSize()
+    ) {
+        gridItemsIndexed(albums, key = { _, album -> album.id }) { _, album ->
+            Column(
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.medium)
+                    .clickable { onOpen(album) }
+            ) {
+                val cover = covers[album.id]
+                if (cover != null) {
+                    GalleryItemCard(item = cover, isSelected = false, isOfflineMode = isOfflineMode, square = true)
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
+                            .clip(MaterialTheme.shapes.medium)
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PhotoLibrary,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.padding(top = 6.dp, start = 2.dp, end = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (GalleryViewModel.isFolderAlbum(album.id)) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = stringResource(R.string.gallery_folder_album),
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    Text(
+                        text = album.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = (counts[album.id] ?: 0).toString(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 2.dp)
+                )
+            }
+        }
+        item(key = "new_album") {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(1f)
+                    .clip(MaterialTheme.shapes.medium)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.medium)
+                    .clickable { onNewAlbum() },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(32.dp))
+                    Text(stringResource(R.string.gallery_new_album), style = MaterialTheme.typography.labelLarge)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ConfirmDeleteDialog(
+    title: String,
+    message: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.button_delete), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.button_cancel)) }
+        }
+    )
 }
 
 @Composable
@@ -780,7 +1031,8 @@ private fun GalleryItemCard(
     item: GalleryItem,
     isSelected: Boolean,
     isOfflineMode: Boolean = false,
-    square: Boolean = true
+    square: Boolean = true,
+    modifier: Modifier = Modifier
 ) {
     // Create cache key directly from item's stable properties
     val context = LocalContext.current
@@ -795,7 +1047,7 @@ private fun GalleryItemCard(
         ).coerceIn(0.3f, 3f)
 
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .aspectRatio(aspect)
             .then(

@@ -250,6 +250,24 @@ object LocalGalleryStore {
         return if (file.exists()) try { file.readText() } catch (_: Exception) { null } else null
     }
 
+    /**
+     * Remove single items (by cache key string) from the device copy. The generation
+     * record of a prompt is removed once none of its items are left.
+     */
+    fun removeKeys(context: Context, serverId: String?, keyStrings: Set<String>) {
+        if (serverId == null || keyStrings.isEmpty()) return
+        synchronized(lock) {
+            val idx = index(context, serverId)
+            val removed = keyStrings.mapNotNull { k -> idx.remove(k)?.also { File(serverDir(context, serverId), safeName(k)).delete() } }
+            if (removed.isEmpty()) return
+            val remainingPrompts = idx.values.mapTo(HashSet()) { it.item.promptId }
+            removed.map { it.item.promptId }.distinct()
+                .filter { it !in remainingPrompts }
+                .forEach { recordFile(context, serverId, it).delete() }
+            persist(context, serverId)
+        }
+    }
+
     /** Remove items from the device copy (the phone Photos copy is left alone). */
     fun remove(context: Context, serverId: String?, promptIds: Set<String>) {
         if (serverId == null) return

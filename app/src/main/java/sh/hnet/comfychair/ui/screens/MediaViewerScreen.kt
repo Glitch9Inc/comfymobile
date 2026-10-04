@@ -153,15 +153,19 @@ fun MediaViewerScreen(
                             pageCount = { uiState.items.size }
                         )
 
-                        // Sync pager state with ViewModel (user swipes)
+                        // Sync pager state with ViewModel (user swipes).
+                        // Compare with the ViewModel's current state, not the state captured when this
+                        // effect started: otherwise swiping back to the first page is ignored and the
+                        // info/delete/share actions apply to a different item than the one shown.
                         LaunchedEffect(pagerState) {
                             snapshotFlow { pagerState.currentPage }
                                 .collect { page ->
-                                    if (page != uiState.currentIndex) {
+                                    val state = viewModel.uiState.value
+                                    if (page != state.currentIndex) {
                                         viewModel.setCurrentIndex(page)
 
                                         // Update cache priorities based on new position
-                                        val allKeys = uiState.items.map {
+                                        val allKeys = state.items.map {
                                             MediaCacheKey(it.promptId, it.filename)
                                         }
                                         MediaCache.updateNavigationPriorities(page, allKeys)

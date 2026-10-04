@@ -71,6 +71,7 @@ class MediaViewerActivity : ComponentActivity() {
         const val EXTRA_GALLERY_ITEMS_JSON = "gallery_items_json"
         const val EXTRA_INITIAL_INDEX = "initial_index"
         const val EXTRA_START_SLIDESHOW = "start_slideshow"
+        const val EXTRA_IS_TRASH = "is_trash"
 
         // Single mode extras
         const val EXTRA_IS_VIDEO = "is_video"
@@ -93,7 +94,8 @@ class MediaViewerActivity : ComponentActivity() {
             port: Int,
             items: List<MediaViewerItem>,
             initialIndex: Int,
-            startSlideshow: Boolean = false
+            startSlideshow: Boolean = false,
+            isTrash: Boolean = false
         ): Intent {
             return Intent(context, MediaViewerActivity::class.java).apply {
                 putExtra(EXTRA_MODE, MODE_GALLERY)
@@ -102,6 +104,7 @@ class MediaViewerActivity : ComponentActivity() {
                 putExtra(EXTRA_GALLERY_ITEMS_JSON, MediaViewerItem.listToJson(items))
                 putExtra(EXTRA_INITIAL_INDEX, initialIndex)
                 putExtra(EXTRA_START_SLIDESHOW, startSlideshow)
+                putExtra(EXTRA_IS_TRASH, isTrash)
             }
         }
 
@@ -272,6 +275,7 @@ class MediaViewerActivity : ComponentActivity() {
         val itemsJson = intent.getStringExtra(EXTRA_GALLERY_ITEMS_JSON) ?: "[]"
         val initialIndex = intent.getIntExtra(EXTRA_INITIAL_INDEX, 0)
         val startSlideshow = intent.getBooleanExtra(EXTRA_START_SLIDESHOW, false)
+        val isTrash = intent.getBooleanExtra(EXTRA_IS_TRASH, false)
 
         val items = MediaViewerItem.listFromJson(itemsJson)
 
@@ -282,7 +286,8 @@ class MediaViewerActivity : ComponentActivity() {
             mode = ViewerMode.GALLERY,
             items = items,
             initialIndex = initialIndex,
-            startSlideshow = startSlideshow
+            startSlideshow = startSlideshow,
+            isTrash = isTrash
         )
     }
 

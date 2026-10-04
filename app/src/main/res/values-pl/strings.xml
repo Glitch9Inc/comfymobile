@@ -663,4 +663,16 @@
     <string name="gallery_slideshow">Pokaz slajdów</string>
     <string name="media_viewer_slideshow_start">Uruchom pokaz slajdów</string>
     <string name="media_viewer_slideshow_stop">Zatrzymaj pokaz slajdów</string>
+    <string name="gallery_tab_photos">Zdjęcia</string>
+    <string name="gallery_tab_albums">Albumy</string>
+    <string name="gallery_tab_trash">Kosz</string>
+    <string name="msg_moved_to_trash">Przeniesiono do kosza</string>
+    <string name="msg_restored_from_trash">Przywrócono</string>
+    <string name="msg_trash_emptied">Kosz opróżniony</string>
+    <string name="msg_trash_empty">Kosz jest pusty</string>
+    <string name="gallery_restore">Przywróć</string>
+    <string name="gallery_delete_forever">Usuń na zawsze</string>
+    <string name="gallery_empty_trash">Opróżnij kosz</string>
+    <string name="gallery_delete_forever_confirm">Usunąć na zawsze elementy (%d)? Tej operacji nie można cofnąć. Pliki pozostaną w folderze output ComfyUI.</string>
+    <string name="gallery_folder_album">Folder output</string>
 </resources>

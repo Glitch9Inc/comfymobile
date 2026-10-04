@@ -1462,6 +1462,65 @@ class ComfyUIClient(
      * @param promptId The prompt ID of the history item to delete
      * @param callback Called with the result: success true/false
      */
+    /**
+     * List the media files in the server's output folder, including ones that are not in
+     * the history (e.g. after a ComfyUI restart or copied there by hand). Blocking; call
+     * from a background thread.
+     *
+     * - Root files come from /internal/files/output (newest first).
+     * - Files in subfolders come from the assets API (/api/assets), which ComfyUI only
+     *   serves when started with --enable-assets; without it only the root is listed.
+     *
+     * @return Paths relative to the output folder ("a.png", "sub/b.png"), or null if the
+     *         server could not be reached
+     */
+    fun listOutputFiles(): List<String>? {
+        val baseUrl = getBaseUrl() ?: return null
+        val result = LinkedHashSet<String>()
+
+        fun getJson(url: String): String? = try {
+            httpClient.newCall(Request.Builder().url(url).get().build()).execute().use { response ->
+                if (response.isSuccessful) response.body?.string() else null
+            }
+        } catch (e: IOException) {
+            null
+        }
+
+        // Root of the output folder ("name [output]" in newer versions, plain names before)
+        val root = getJson("$baseUrl/internal/files/output") ?: return null
+        try {
+            val arr = org.json.JSONArray(root)
+            for (i in 0 until arr.length()) {
+                val name = arr.optString(i).removeSuffix(" [output]").trim()
+                if (name.isNotEmpty() && isMediaFile(name)) result.add(name)
+            }
+        } catch (e: Exception) {
+            DebugLogger.w(TAG, "Could not parse output folder listing: ${e.message}")
+        }
+
+        // Whole output tree via the assets API, when enabled
+        var offset = 0
+        while (offset < 20000) {
+            val body = getJson("$baseUrl/api/assets?include_tags=output&limit=500&offset=$offset") ?: break
+            val page = try { JSONObject(body) } catch (e: Exception) { break }
+            val assets = page.optJSONArray("assets") ?: break
+            for (i in 0 until assets.length()) {
+                val asset = assets.optJSONObject(i) ?: continue
+                val path = asset.optString("loader_path", "").replace('\\', '/').trim('/')
+                if (path.isNotEmpty() && isMediaFile(path)) result.add(path)
+            }
+            if (!page.optBoolean("has_more", false) || assets.length() == 0) break
+            offset += assets.length()
+        }
+
+        return result.toList()
+    }
+
+    private fun isMediaFile(name: String): Boolean {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return ext in setOf("png", "jpg", "jpeg", "webp", "gif", "bmp", "mp4", "webm", "mov", "avi", "mkv")
+    }
+
     fun deleteHistoryItem(promptId: String, callback: (success: Boolean) -> Unit) {
         val baseUrl = getBaseUrl() ?: run {
             callback(false)

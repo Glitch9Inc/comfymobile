@@ -27,6 +27,7 @@ import sh.hnet.comfychair.repository.GalleryRepository
 import sh.hnet.comfychair.storage.AppSettings
 import sh.hnet.comfychair.storage.GalleryAlbum
 import sh.hnet.comfychair.storage.GalleryAlbumStore
+import sh.hnet.comfychair.storage.GalleryLibraryStore
 import sh.hnet.comfychair.util.DebugLogger
 import java.io.File
 
@@ -58,25 +59,45 @@ enum class GalleryViewMode(val columns: Int, val square: Boolean) {
     SINGLE(1, false)
 }
 
+/** Gallery tabs shown in the app bar. */
+enum class GalleryTab { PHOTOS, ALBUMS, TRASH }
+
 /**
  * UI state for the Gallery screen
  */
 data class GalleryUiState(
-    /** Items shown (filtered by the selected album) */
+    val tab: GalleryTab = GalleryTab.PHOTOS,
+    /**
+     * Items shown in the grid: Photos = items not in any album, Albums = the open album
+     * (empty while the album list is shown), Trash = deleted items
+     */
     val items: List<GalleryItem> = emptyList(),
-    /** Total number of items before album filtering */
+    /** Number of items in the Photos tab */
     val totalCount: Int = 0,
+    val trashCount: Int = 0,
     val viewMode: GalleryViewMode = GalleryViewMode.GRID_2,
+    /** User-made albums */
     val albums: List<GalleryAlbum> = emptyList(),
-    /** null = all items */
+    /** One album per subfolder of the output folder (read only) */
+    val folderAlbums: List<GalleryAlbum> = emptyList(),
+    /** Open album in the Albums tab; null = album list */
     val selectedAlbumId: String? = null,
     /** Number of existing gallery items in each album (albumId -> count) */
     val albumCounts: Map<String, Int> = emptyMap(),
+    /** First item of each album, used as its cover */
+    val albumCovers: Map<String, GalleryItem> = emptyMap(),
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val selectedItems: Set<String> = emptySet(), // Set of "${promptId}_${filename}" keys
     val isSelectionMode: Boolean = false
-)
+) {
+    val selectedAlbum: GalleryAlbum?
+        get() = selectedAlbumId?.let { id -> (albums + folderAlbums).firstOrNull { it.id == id } }
+
+    /** Items can be reordered by drag and drop (not in the trash or the album list). */
+    val canReorder: Boolean
+        get() = tab == GalleryTab.PHOTOS || (tab == GalleryTab.ALBUMS && selectedAlbumId != null)
+}
 
 /**
  * Events emitted by gallery operations
@@ -95,6 +116,9 @@ class GalleryViewModel : ViewModel() {
     // Constants
     companion object {
         private const val TAG = "Gallery"
+        private const val FOLDER_ALBUM_PREFIX = "folder:"
+
+        fun isFolderAlbum(albumId: String) = albumId.startsWith(FOLDER_ALBUM_PREFIX)
     }
 
     // State
@@ -106,6 +130,7 @@ class GalleryViewModel : ViewModel() {
 
     // View mode and albums
     private data class ViewState(
+        val tab: GalleryTab = GalleryTab.PHOTOS,
         val viewMode: GalleryViewMode = GalleryViewMode.GRID_2,
         val albums: List<GalleryAlbum> = emptyList(),
         val selectedAlbumId: String? = null
@@ -127,36 +152,92 @@ class GalleryViewModel : ViewModel() {
             combine(
                 combine(
                     repository.galleryItems,
+                    repository.trashedItems,
+                    repository.library,
                     repository.isLoading,
                     repository.isManualRefreshing
-                ) { items, isLoading, isManualRefreshing -> Triple(items, isLoading, isManualRefreshing) },
+                ) { items, trashed, library, isLoading, isManualRefreshing ->
+                    RepoState(items, trashed, library.order, isLoading, isManualRefreshing)
+                },
                 _selectedItems,
                 _isSelectionMode,
                 _viewState
-            ) { (rawItems, isLoading, isManualRefreshing), selectedItems, isSelectionMode, view ->
-                // Grid keys must be unique
-                val items = rawItems.distinctBy { getItemKey(it) }
-                val album = view.albums.firstOrNull { it.id == view.selectedAlbumId }
-                // "All" shows only items not yet sorted into any album
-                val inAnyAlbum = view.albums.flatMapTo(HashSet()) { it.members }
-                val unsorted = items.filter { getItemKey(it) !in inAnyAlbum }
-                GalleryUiState(
-                    items = if (album == null) unsorted else items.filter { getItemKey(it) in album.members },
-                    totalCount = unsorted.size,
-                    viewMode = view.viewMode,
-                    albums = view.albums,
-                    selectedAlbumId = album?.id,
-                    albumCounts = view.albums.associate { a -> a.id to items.count { getItemKey(it) in a.members } },
-                    isLoading = isLoading,
-                    isRefreshing = isManualRefreshing, // Only show indicator for manual refresh
-                    selectedItems = selectedItems,
-                    isSelectionMode = isSelectionMode
-                )
+            ) { repo, selectedItems, isSelectionMode, view ->
+                buildUiState(repo, selectedItems, isSelectionMode, view)
             }.collect { state ->
                 _uiState.value = state
             }
         }
     }
+
+    private data class RepoState(
+        val items: List<GalleryItem>,
+        val trashed: List<GalleryItem>,
+        val order: List<String>,
+        val isLoading: Boolean,
+        val isManualRefreshing: Boolean
+    )
+
+    private fun buildUiState(
+        repo: RepoState,
+        selectedItems: Set<String>,
+        isSelectionMode: Boolean,
+        view: ViewState
+    ): GalleryUiState {
+        // Grid keys must be unique
+        val items = applyOrder(repo.items.distinctBy { getItemKey(it) }, repo.order)
+        val folderAlbums = folderAlbumsOf(items)
+        val allAlbums = view.albums + folderAlbums
+        val album = allAlbums.firstOrNull { it.id == view.selectedAlbumId }
+        // Photos shows only items not yet sorted into any album
+        val inAnyAlbum = allAlbums.flatMapTo(HashSet()) { it.members }
+        val unsorted = items.filter { getItemKey(it) !in inAnyAlbum }
+        val albumItems = allAlbums.associate { a -> a.id to items.filter { getItemKey(it) in a.members } }
+        val shown = when (view.tab) {
+            GalleryTab.PHOTOS -> unsorted
+            GalleryTab.ALBUMS -> album?.let { albumItems[it.id] } ?: emptyList()
+            GalleryTab.TRASH -> repo.trashed.distinctBy { getItemKey(it) }
+        }
+        return GalleryUiState(
+            tab = view.tab,
+            items = shown,
+            totalCount = unsorted.size,
+            trashCount = repo.trashed.size,
+            viewMode = view.viewMode,
+            albums = view.albums,
+            folderAlbums = folderAlbums,
+            selectedAlbumId = album?.id,
+            albumCounts = albumItems.mapValues { it.value.size },
+            albumCovers = albumItems.mapNotNull { (id, list) -> list.firstOrNull()?.let { id to it } }.toMap(),
+            isLoading = repo.isLoading,
+            isRefreshing = repo.isManualRefreshing, // Only show indicator for manual refresh
+            selectedItems = selectedItems,
+            isSelectionMode = isSelectionMode
+        )
+    }
+
+    /** Items in the saved custom order; items not ordered yet (new ones) stay on top. */
+    private fun applyOrder(items: List<GalleryItem>, order: List<String>): List<GalleryItem> {
+        if (order.isEmpty()) return items
+        val position = HashMap<String, Int>(order.size * 2)
+        order.forEachIndexed { i, id -> position.putIfAbsent(id, i) }
+        val (ordered, fresh) = items.partition { GalleryLibraryStore.fileId(it) in position }
+        return fresh + ordered.sortedBy { position[GalleryLibraryStore.fileId(it)] }
+    }
+
+    /** One read-only album per output subfolder, with its items as members. */
+    private fun folderAlbumsOf(items: List<GalleryItem>): List<GalleryAlbum> =
+        items.filter { it.type == "output" && it.subfolder.isNotEmpty() }
+            .groupBy { it.subfolder }
+            .entries
+            .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.key })
+            .map { (subfolder, list) ->
+                GalleryAlbum(
+                    id = FOLDER_ALBUM_PREFIX + subfolder,
+                    name = subfolder,
+                    members = list.mapTo(HashSet()) { getItemKey(it) }
+                )
+            }
 
     fun initialize(context: Context) {
         // MediaCache is used for all fetch operations
@@ -192,16 +273,23 @@ class GalleryViewModel : ViewModel() {
 
     private fun updateAlbums(transform: (List<GalleryAlbum>) -> List<GalleryAlbum>) {
         val albums = transform(_viewState.value.albums)
-        val selected = _viewState.value.selectedAlbumId?.takeIf { id -> albums.any { it.id == id } }
+        val selected = _viewState.value.selectedAlbumId
+            ?.takeIf { id -> isFolderAlbum(id) || albums.any { it.id == id } }
         _viewState.value = _viewState.value.copy(albums = albums, selectedAlbumId = selected)
         val ctx = appContext ?: return
         val serverId = albumsServerId ?: return
         viewModelScope.launch(Dispatchers.IO) { GalleryAlbumStore.save(ctx, serverId, albums) }
     }
 
+    fun selectTab(tab: GalleryTab) {
+        clearSelection()
+        _viewState.value = _viewState.value.copy(tab = tab, selectedAlbumId = null)
+    }
+
+    /** Open an album (null = back to the album list). */
     fun selectAlbum(albumId: String?) {
         clearSelection()
-        _viewState.value = _viewState.value.copy(selectedAlbumId = albumId)
+        _viewState.value = _viewState.value.copy(tab = GalleryTab.ALBUMS, selectedAlbumId = albumId)
     }
 
     /** Create an album; if items are selected, they are added to it. */
@@ -221,6 +309,7 @@ class GalleryViewModel : ViewModel() {
     }
 
     fun renameAlbum(albumId: String, name: String) {
+        if (isFolderAlbum(albumId)) return
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
         updateAlbums { list -> list.map { if (it.id == albumId) it.copy(name = trimmed) else it } }
@@ -228,10 +317,12 @@ class GalleryViewModel : ViewModel() {
 
     /** Deletes only the album; the items stay in the gallery. */
     fun deleteAlbum(albumId: String) {
+        if (isFolderAlbum(albumId)) return
         updateAlbums { list -> list.filterNot { it.id == albumId } }
     }
 
     fun addSelectedToAlbum(albumId: String) {
+        if (isFolderAlbum(albumId)) return
         val keys = _selectedItems.value
         if (keys.isEmpty()) return
         updateAlbums { list -> list.map { if (it.id == albumId) it.copy(members = it.members + keys) else it } }
@@ -289,18 +380,39 @@ class GalleryViewModel : ViewModel() {
         repository.refresh()
     }
 
+    /** Move an item to the trash. */
     fun deleteItem(item: GalleryItem) {
-        DebugLogger.i(TAG, "Deleting item: ${item.promptId}")
-        viewModelScope.launch {
-            val success = repository.deleteItem(item)
-            if (success) {
-                DebugLogger.d(TAG, "Delete successful")
-                _events.emit(GalleryEvent.ShowToast(R.string.msg_history_item_deleted_success))
-            } else {
-                DebugLogger.w(TAG, "Delete failed")
-                _events.emit(GalleryEvent.ShowToast(R.string.error_history_item_delete))
-            }
-        }
+        DebugLogger.i(TAG, "Moving item to trash: ${item.promptId}")
+        repository.moveToTrash(listOf(item))
+        viewModelScope.launch { _events.emit(GalleryEvent.ShowToast(R.string.msg_moved_to_trash)) }
+    }
+
+    // Drag and drop ordering
+
+    /**
+     * Move [fromKey] to where [toKey] is in the shown list. The order is kept for the
+     * whole gallery, so items keep their relative order in every view.
+     */
+    fun moveItem(fromKey: String, toKey: String) {
+        if (fromKey == toKey) return
+        val shown = _uiState.value.items
+        val fromIndex = shown.indexOfFirst { getItemKey(it) == fromKey }
+        val toIndex = shown.indexOfFirst { getItemKey(it) == toKey }
+        if (fromIndex < 0 || toIndex < 0) return
+
+        val full = applyOrder(repository.galleryItems.value.distinctBy { getItemKey(it) }, repository.library.value.order)
+            .map { GalleryLibraryStore.fileId(it) }
+            .toMutableList()
+        val fromId = GalleryLibraryStore.fileId(shown[fromIndex])
+        val toId = GalleryLibraryStore.fileId(shown[toIndex])
+        full.remove(fromId)
+        val target = full.indexOf(toId)
+        if (target < 0) return
+        // Moving down lands after the target, moving up lands before it
+        full.add(if (fromIndex < toIndex) target + 1 else target, fromId)
+        // Keep the saved position of items not shown now (e.g. in the trash)
+        val shownIds = full.toHashSet()
+        repository.setOrder(full + repository.library.value.order.filter { it !in shownIds })
     }
 
     fun saveImageToGallery(context: Context, item: GalleryItem) {
@@ -526,25 +638,42 @@ class GalleryViewModel : ViewModel() {
         setSelection(uiState.value.items.map { getItemKey(it) }.toSet())
     }
 
+    /** Move the selected items to the trash. */
     fun deleteSelected() {
         val selectedItems = getSelectedItems()
         if (selectedItems.isEmpty()) return
+        repository.moveToTrash(selectedItems)
+        clearSelection()
+        viewModelScope.launch { _events.emit(GalleryEvent.ShowToast(R.string.msg_moved_to_trash)) }
+    }
 
+    // Trash
+
+    fun restoreSelected() {
+        val selectedItems = getSelectedItems()
+        if (selectedItems.isEmpty()) return
+        repository.restoreFromTrash(selectedItems)
+        clearSelection()
+        viewModelScope.launch { _events.emit(GalleryEvent.ShowToast(R.string.msg_restored_from_trash)) }
+    }
+
+    fun deleteSelectedPermanently() {
+        val selectedItems = getSelectedItems()
+        if (selectedItems.isEmpty()) return
+        clearSelection()
         viewModelScope.launch {
-            // Get unique prompt IDs (multiple items can share the same promptId)
-            val promptIds = selectedItems.map { it.promptId }.distinct().toSet()
-            val successCount = repository.deleteItems(promptIds)
-            val failCount = promptIds.size - successCount
+            repository.deletePermanently(selectedItems)
+            _events.emit(GalleryEvent.ShowToast(R.string.msg_items_deleted_success))
+        }
+    }
 
-            // Show result toast
-            if (failCount == 0) {
-                _events.emit(GalleryEvent.ShowToast(R.string.msg_items_deleted_success))
-            } else {
-                _events.emit(GalleryEvent.ShowToast(R.string.msg_some_items_failed_to_delete))
-            }
-
-            // Clear selection after delete
-            clearSelection()
+    fun emptyTrash() {
+        val trashed = repository.trashedItems.value
+        if (trashed.isEmpty()) return
+        clearSelection()
+        viewModelScope.launch {
+            repository.deletePermanently(trashed)
+            _events.emit(GalleryEvent.ShowToast(R.string.msg_trash_emptied))
         }
     }
 

@@ -1,5 +1,6 @@
 package sh.hnet.comfychair.ui.screens
 
+import sh.hnet.comfychair.repository.GalleryRepository
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
@@ -364,9 +365,16 @@ fun TextToImageScreen(
         selectedRecent = item
         scope.launch {
             MediaCache.fetchImage(item.toCacheKey(), item.subfolder, item.type)?.let {
-                textToImageViewModel.onPreviewBitmapChange(it)
+                textToImageViewModel.showGalleryImage(it, item)
             }
         }
+    }
+
+    // A recent result deleted from the gallery must not stay selected
+    val trashedItems by GalleryRepository.getInstance().trashedItems.collectAsState()
+    LaunchedEffect(trashedItems) {
+        val shown = selectedRecent ?: return@LaunchedEffect
+        if (trashedItems.any { it.toCacheKey() == shown.toCacheKey() }) selectedRecent = null
     }
 
     // "Copy settings": load the generation record of the shown image back into the form

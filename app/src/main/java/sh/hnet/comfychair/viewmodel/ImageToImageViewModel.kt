@@ -1,5 +1,6 @@
 package sh.hnet.comfychair.viewmodel
 
+import sh.hnet.comfychair.repository.GalleryRepository
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -306,6 +307,8 @@ class ImageToImageViewModel : BaseGenerationViewModel<ImageToImageUiState, Image
     }
 
     init {
+        observeTrash()
+
         // Observe model cache from ConnectionManager
         viewModelScope.launch {
             ConnectionManager.modelCache.collect { cache ->
@@ -2137,18 +2140,28 @@ class ImageToImageViewModel : BaseGenerationViewModel<ImageToImageUiState, Image
      */
     fun clearPreviewForExecution(promptId: String) {
         if (promptId == lastClearedForPromptId) {
-            return // Already cleared for this promptId
+            return // Already handled for this promptId
         }
         lastClearedForPromptId = promptId
-        // Evict from cache so loadSavedImages() won't restore the old preview
-        // when navigating back to this screen during generation
-        MediaStateHolder.evict(MediaStateHolder.MediaKey.ItiPreview)
-        _uiState.value = _uiState.value.copy(
-            previewImage = null,
-            previewImageFilename = null,
-            previewImageSubfolder = null,
-            previewImageType = null
-        )
+        // Keep showing the last image until the first live preview (or the result) arrives
+    }
+
+    /**
+     * Clear the preview when the image it shows is deleted from the gallery
+     * (moved to the trash), so a deleted image does not stay on this screen.
+     */
+    private fun observeTrash() {
+        viewModelScope.launch {
+            GalleryRepository.getInstance().trashedItems.collect { trashed ->
+                val state = _uiState.value
+                val name = state.previewImageFilename ?: return@collect
+                val subfolder = state.previewImageSubfolder ?: ""
+                if (trashed.any { it.filename == name && it.subfolder == subfolder }) {
+                    MediaStateHolder.evict(MediaStateHolder.MediaKey.ItiPreview)
+                    clearPreview()
+                }
+            }
+        }
     }
 
     fun clearPreview() {
@@ -2203,6 +2216,12 @@ class ImageToImageViewModel : BaseGenerationViewModel<ImageToImageUiState, Image
     private fun handleGenerationEvent(event: GenerationEvent) {
         when (event) {
             is GenerationEvent.PreviewImage -> {
+                // A live preview replaces the last image, so its file info no longer applies
+                _uiState.value = _uiState.value.copy(
+                    previewImageFilename = null,
+                    previewImageSubfolder = null,
+                    previewImageType = null
+                )
                 onPreviewBitmapChange(event.bitmap)
             }
             is GenerationEvent.ImageGenerated -> {

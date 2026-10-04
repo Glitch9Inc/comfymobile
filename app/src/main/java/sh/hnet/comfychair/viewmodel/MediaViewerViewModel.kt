@@ -154,12 +154,16 @@ class MediaViewerViewModel : ViewModel() {
     val events: SharedFlow<MediaViewerEvent> = _events.asSharedFlow()
 
     // Metadata state
-    private val cachedMetadata = mutableMapOf<Int, GenerationMetadata?>()
+    // Keyed by item ("promptId_filename"), not by position, so it stays right after deletions
+    private val cachedMetadata = java.util.concurrent.ConcurrentHashMap<String, MetadataHolder>()
     private val _currentMetadata = MutableStateFlow<GenerationMetadata?>(null)
     val currentMetadata: StateFlow<GenerationMetadata?> = _currentMetadata.asStateFlow()
 
     private val _isLoadingMetadata = MutableStateFlow(false)
     val isLoadingMetadata: StateFlow<Boolean> = _isLoadingMetadata.asStateFlow()
+
+    // Opened from the gallery's trash: deleting removes items for good
+    private var isTrash = false
 
     // Track whether any items were deleted during this session
     private val _hasDeletedItems = MutableStateFlow(false)
@@ -174,9 +178,11 @@ class MediaViewerViewModel : ViewModel() {
         initialIndex: Int,
         singleBitmap: Bitmap? = null,
         singleVideoUri: Uri? = null,
-        startSlideshow: Boolean = false
+        startSlideshow: Boolean = false,
+        isTrash: Boolean = false
     ) {
         applicationContext = context.applicationContext
+        this.isTrash = isTrash
 
         val slideshow = startSlideshow && mode == ViewerMode.GALLERY && items.size > 1
         _uiState.value = MediaViewerUiState(
@@ -284,6 +290,8 @@ class MediaViewerViewModel : ViewModel() {
      * Show item from cache after prefetch completes.
      */
     private fun showFromCache(item: MediaViewerItem, key: MediaCacheKey) {
+        // The user may have swiped on while waiting; never show another item's content
+        if (_uiState.value.currentItem?.toCacheKey() != key) return
         if (item.isVideo) {
             val uri = MediaCache.getCachedVideoUri(key)
             _uiState.value = _uiState.value.copy(
@@ -373,12 +381,14 @@ class MediaViewerViewModel : ViewModel() {
             if (item.isVideo) {
                 // Fetch video and create URI in one step
                 val uri = MediaCache.fetchVideoUri(key, item.subfolder, item.type, context)
+                if (_uiState.value.currentItem?.toCacheKey() != key) return@launch
                 _uiState.value = _uiState.value.copy(
                     currentVideoUri = uri,
                     isLoading = false
                 )
             } else {
                 val bitmap = MediaCache.fetchImage(key, item.subfolder, item.type)
+                if (_uiState.value.currentItem?.toCacheKey() != key) return@launch
                 _uiState.value = _uiState.value.copy(
                     currentBitmap = bitmap,
                     isLoading = false
@@ -392,11 +402,12 @@ class MediaViewerViewModel : ViewModel() {
      * Uses cached metadata if available from pre-loading, otherwise fetches on demand.
      */
     fun loadMetadata() {
-        val index = _uiState.value.currentIndex
+        val item = _uiState.value.currentItem ?: return
+        val itemKey = item.metadataKey()
 
         // Check cache first - metadata may have been pre-loaded
-        if (cachedMetadata.containsKey(index)) {
-            _currentMetadata.value = cachedMetadata[index]
+        cachedMetadata[itemKey]?.let {
+            _currentMetadata.value = it.metadata
             return
         }
 
@@ -404,12 +415,19 @@ class MediaViewerViewModel : ViewModel() {
         _isLoadingMetadata.value = true
 
         viewModelScope.launch {
-            val metadata = fetchMetadataForIndex(index)
-            cachedMetadata[index] = metadata
-            _currentMetadata.value = metadata
+            val metadata = fetchMetadataForItem(item)
+            cachedMetadata[itemKey] = MetadataHolder(metadata)
+            // Only show it if the user is still on that item
+            if (_uiState.value.currentItem?.metadataKey() == itemKey) {
+                _currentMetadata.value = metadata
+            }
             _isLoadingMetadata.value = false
         }
     }
+
+    private class MetadataHolder(val metadata: GenerationMetadata?)
+
+    private fun MediaViewerItem.metadataKey() = "${promptId}_$filename"
 
     /**
      * Clear metadata when navigating to a different item.
@@ -419,13 +437,12 @@ class MediaViewerViewModel : ViewModel() {
     }
 
     /**
-     * Fetches metadata for a specific item by index.
+     * Fetches metadata for a specific item.
      * Handles both images (PNG) and videos (MP4).
      * Returns null if metadata cannot be extracted.
      */
-    private suspend fun fetchMetadataForIndex(index: Int): GenerationMetadata? {
+    private suspend fun fetchMetadataForItem(item: MediaViewerItem): GenerationMetadata? {
         val state = _uiState.value
-        val item = state.items.getOrNull(index) ?: return null
         val context = applicationContext ?: return null
 
         return withContext(Dispatchers.IO) {
@@ -494,13 +511,14 @@ class MediaViewerViewModel : ViewModel() {
             currentIndex - 2,  // Nearby
             currentIndex + 2
         ).filter { it in 0 until itemCount }
-         .filter { !cachedMetadata.containsKey(it) }
+         .map { state.items[it] }
+         .filter { !cachedMetadata.containsKey(it.metadataKey()) }
 
-        indicesToPreload.forEach { idx ->
+        indicesToPreload.forEach { item ->
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    val metadata = fetchMetadataForIndex(idx)
-                    cachedMetadata[idx] = metadata
+                    val metadata = fetchMetadataForItem(item)
+                    cachedMetadata[item.metadataKey()] = MetadataHolder(metadata)
                 } catch (e: Exception) {
                     // Silently fail - metadata will load on-demand if needed
                 }
@@ -508,70 +526,60 @@ class MediaViewerViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Move the current item to the gallery's trash (or, when viewing the trash,
+     * delete it for good) and show the next one.
+     */
     fun deleteCurrentItem() {
         val state = _uiState.value
         val item = state.currentItem ?: return
-        if (item.isPreview) return
-        val client = ConnectionManager.clientOrNull ?: return
+        if (item.isPreview || state.mode != ViewerMode.GALLERY) return
+        val galleryItem = GalleryItem(item.promptId, item.filename, item.subfolder, item.type, item.isVideo, item.index)
+        val repository = GalleryRepository.getInstance()
 
         viewModelScope.launch {
-            val success = withContext(Dispatchers.IO) {
-                kotlin.coroutines.suspendCoroutine<Boolean> { continuation ->
-                    client.deleteHistoryItem(item.promptId) { success ->
-                        continuation.resumeWith(Result.success(success))
-                    }
-                }
+            if (isTrash) {
+                repository.deletePermanently(listOf(galleryItem))
+                _events.emit(MediaViewerEvent.ShowToast(R.string.msg_history_item_deleted_success))
+            } else {
+                repository.moveToTrash(listOf(galleryItem))
+                _events.emit(MediaViewerEvent.ShowToast(R.string.msg_moved_to_trash))
             }
 
-            if (success) {
-                _events.emit(MediaViewerEvent.ShowToast(R.string.msg_history_item_deleted_success))
+            // Mark that items were deleted (for result reporting)
+            _hasDeletedItems.value = true
 
-                // Mark that items were deleted (for result reporting)
-                _hasDeletedItems.value = true
+            // Get fresh state after async operation
+            val currentState = _uiState.value
+            val currentItems = currentState.items.toMutableList()
 
-                // Evict from MediaCache (uses stable key, not index)
-                MediaCache.evict(item.toCacheKey())
+            // Make sure we're removing the correct item
+            val actualIndexToRemove = currentItems.indexOfFirst {
+                it.promptId == item.promptId && it.filename == item.filename
+            }
 
-                // Sync deletion to GalleryRepository so Gallery UI updates immediately
-                GalleryRepository.getInstance().removeItemLocally(item.promptId)
+            if (actualIndexToRemove >= 0) {
+                currentItems.removeAt(actualIndexToRemove)
+            }
 
-                // Get fresh state after async operation
-                val currentState = _uiState.value
-                val currentItems = currentState.items.toMutableList()
-
-                // Make sure we're removing the correct item
-                val actualIndexToRemove = currentItems.indexOfFirst {
-                    it.promptId == item.promptId && it.filename == item.filename
-                }
-
-                if (actualIndexToRemove >= 0) {
-                    currentItems.removeAt(actualIndexToRemove)
-                }
-
-                if (currentItems.isEmpty()) {
-                    // No more items, close viewer
-                    _events.emit(MediaViewerEvent.ItemDeleted)
-                    _events.emit(MediaViewerEvent.Close)
-                } else {
-                    // Adjust index and show next/previous item
-                    val newIndex = actualIndexToRemove.coerceIn(0, currentItems.size - 1)
-
-                    // Clear metadata cache (still uses indices)
-                    cachedMetadata.clear()
-                    _currentMetadata.value = null
-
-                    _uiState.value = currentState.copy(
-                        items = currentItems,
-                        currentIndex = newIndex,
-                        currentBitmap = null,
-                        currentVideoUri = null,
-                        isLoading = true
-                    )
-                    _events.emit(MediaViewerEvent.ItemDeleted)
-                    loadCurrentItem()
-                }
+            if (currentItems.isEmpty()) {
+                // No more items, close viewer
+                _events.emit(MediaViewerEvent.ItemDeleted)
+                _events.emit(MediaViewerEvent.Close)
             } else {
-                _events.emit(MediaViewerEvent.ShowToast(R.string.error_history_item_delete))
+                // Adjust index and show next/previous item
+                val newIndex = actualIndexToRemove.coerceIn(0, currentItems.size - 1)
+                _currentMetadata.value = null
+
+                _uiState.value = currentState.copy(
+                    items = currentItems,
+                    currentIndex = newIndex,
+                    currentBitmap = null,
+                    currentVideoUri = null,
+                    isLoading = true
+                )
+                _events.emit(MediaViewerEvent.ItemDeleted)
+                loadCurrentItem()
             }
         }
     }

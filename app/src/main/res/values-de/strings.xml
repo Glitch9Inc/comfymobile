@@ -661,4 +661,16 @@
     <string name="gallery_slideshow">Diashow</string>
     <string name="media_viewer_slideshow_start">Diashow starten</string>
     <string name="media_viewer_slideshow_stop">Diashow beenden</string>
+    <string name="gallery_tab_photos">Fotos</string>
+    <string name="gallery_tab_albums">Alben</string>
+    <string name="gallery_tab_trash">Papierkorb</string>
+    <string name="msg_moved_to_trash">In den Papierkorb verschoben</string>
+    <string name="msg_restored_from_trash">Wiederhergestellt</string>
+    <string name="msg_trash_emptied">Papierkorb geleert</string>
+    <string name="msg_trash_empty">Der Papierkorb ist leer</string>
+    <string name="gallery_restore">Wiederherstellen</string>
+    <string name="gallery_delete_forever">Endgültig löschen</string>
+    <string name="gallery_empty_trash">Papierkorb leeren</string>
+    <string name="gallery_delete_forever_confirm">%d Elemente endgültig löschen? Dies kann nicht rückgängig gemacht werden. Die Dateien bleiben im Output-Ordner von ComfyUI.</string>
+    <string name="gallery_folder_album">Output-Ordner</string>
 </resources>
